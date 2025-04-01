@@ -1,0 +1,1 @@
+"User_Group\bno08x.c" XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT(.\Listings\bno08x.lst) TABS (2) OBJECT(.\Objects\bno08x.obj)

@@ -1,0 +1,301 @@
+C251 COMPILER V5.60.0,  spi                                                                15/07/24  15:58:56  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE spi
+OBJECT MODULE PLACED IN .\Objects\spi.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE ..\Ò£¿ØÐ¡³µ\User_Group\spi.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group)
+                    - DEBUG PRINT(.\Listings\spi.lst) TABS(2) OBJECT(.\Objects\spi.obj) 
+
+stmt  level    source
+
+    1          #include "./H_Group/spi.h" //flashÏà¹Ø
+    2          
+    3          u8 B_FlashOK; // Flash×´Ì¬
+    4          u8 W25Q128_ID, W25Q128_ID1, W25Q128_ID2;
+    5          /******************* FLASHÏà¹Ø³ÌÐò ************************/
+    6          #define SFC_WREN 0x06 // ´®ÐÐFlashÃüÁî¼¯
+    7          #define SFC_WRDI 0x04
+    8          #define SFC_RDSR 0x05
+    9          #define SFC_WRSR 0x01
+   10          #define SFC_READ 0x03
+   11          #define SFC_FASTREAD 0x0B
+   12          #define SFC_RDID 0xAB
+   13          #define SFC_PAGEPROG 0x02
+   14          #define SFC_RDCR 0xA1
+   15          #define SFC_WRCR 0xF1
+   16          #define SFC_SECTORER1 0xD7 // W25Q128 ÉÈÇø²Á³ýÖ¸Áî
+   17          #define SFC_SECTORER2 0x52 // W25Xxx ÉÈÇø²Á³ýÖ¸Áî£¬32K²Ù×÷
+   18          #define SFC_BLOCKER 0xD8
+   19          #define SFC_CHIPER 0xC7
+   20          
+   21          #define SPI_CE_High() SPI_CS = 1 // set CE high
+   22          #define SPI_CE_Low() SPI_CS = 0  // clear CE low
+   23          
+   24          /************************************************************************/
+   25          void SPI_init(void)
+   26          {
+   27   1        P_SW1 = (P_SW1 & ~(3 << 2)) | (3 << 2); // IO¿ÚÇÐ»». 0: P1.2/P5.4 P1.3 P1.4 P1.5, 1: P2.2 P2.3 P2.4 P2.
+             -5, 2: P5.4 P4.0 P4.1 P4.3, 3: P3.5 P3.4 P3.3 P3.2
+   28   1        SSIG = 1;                               // ºöÂÔ SS Òý½Å¹¦ÄÜ£¬Ê¹ÓÃ MSTR È·¶¨Æ÷¼þÊÇÖ÷»ú»¹ÊÇ´Ó»ú
+   29   1        SPEN = 1;                               // Ê¹ÄÜ SPI ¹¦ÄÜ
+   30   1        DORD = 0;                               // ÏÈ·¢ËÍ/½ÓÊÕÊý¾ÝµÄ¸ßÎ»£¨ MSB£©
+   31   1        MSTR = 1;                               // ÉèÖÃÖ÷»úÄ£Ê½
+   32   1        CPOL = 0;                               // SCLK ¿ÕÏÐÊ±ÎªµÍµçÆ½£¬SCLK µÄÇ°Ê±ÖÓÑØÎªÉÏÉýÑØ£¬ºóÊ±ÖÓÑØÎªÏÂ½µ
+             -ÑØ
+   33   1        CPHA = 0;                               // Êý¾Ý SS ¹Ü½ÅÎªµÍµçÆ½Çý¶¯µÚÒ»Î»Êý¾Ý²¢ÔÚ SCLK µÄºóÊ±ÖÓÑØ¸Ä±äÊý
+             -¾Ý
+   34   1        SPCTL = (SPCTL & ~3) | 3;               // SPI Ê±ÖÓÆµÂÊÑ¡Ôñ, 0: 4T, 1: 8T,  2: 16T,  3: 2T
+   35   1      
+   36   1        // HSCLKDIV = 0x08; // ¸ßËÙÊ±ÖÓ8·ÖÆµ£¬Ä¬ÈÏ2·ÖÆµ¡£¿ªÂ©Ä£Ê½Í¨¹ý10Kµç×èÉÏÀ­µ½3.3V£¬µçÆ½ÉÏÉýËÙ¶ÈÂý£¬ÐèÒª½µµ
+             -ÍSPIËÙÂÊ²ÅÄÜÕý³£Í¨ÐÅ¡£
+   37   1      
+   38   1        SPI_SCLK = 0; // set clock to low initial state
+   39   1        SPI_MOSI = 1;
+   40   1        SPIF = 1; // ÇåSPIF±êÖ¾
+   41   1        WCOL = 1; // ÇåWCOL±êÖ¾
+   42   1      }
+   43          
+   44          /************************************************************************/
+   45          void SPI_WriteByte(u8 out)
+   46          {
+   47   1        SPDAT = out;
+   48   1        while (SPIF == 0)
+   49   1          ;
+   50   1        SPIF = 1; // ÇåSPIF±êÖ¾
+   51   1        WCOL = 1; // ÇåWCOL±êÖ¾
+   52   1      }
+   53          
+   54          /************************************************************************/
+C251 COMPILER V5.60.0,  spi                                                                15/07/24  15:58:56  PAGE 2   
+
+   55          u8 SPI_ReadByte(void)
+   56          {
+   57   1        SPDAT = 0xff;
+   58   1        while (SPIF == 0)
+   59   1          ;
+   60   1        SPIF = 1; // ÇåSPIF±êÖ¾
+   61   1        WCOL = 1; // ÇåWCOL±êÖ¾
+   62   1        return (SPDAT);
+   63   1      }
+   64          
+   65          /************************************************
+   66          ¼ì²âFlashÊÇ·ñ×¼±¸¾ÍÐ÷
+   67          Èë¿Ú²ÎÊý: ÎÞ
+   68          ³ö¿Ú²ÎÊý:
+   69              0 : Ã»ÓÐ¼ì²âµ½ÕýÈ·µÄFlash
+   70              1 : Flash×¼±¸¾ÍÐ÷
+   71          ************************************************/
+   72          void FlashCheckID(void)
+   73          {
+   74   1        SPI_CE_Low();
+   75   1        SPI_WriteByte(SFC_RDID); // ·¢ËÍ¶ÁÈ¡IDÃüÁî
+   76   1        SPI_WriteByte(0x00);     // ¿Õ¶Á3¸ö×Ö½Ú
+   77   1        SPI_WriteByte(0x00);
+   78   1        SPI_WriteByte(0x00);
+   79   1        W25Q128_ID = SPI_ReadByte(); // ¶ÁÈ¡Éè±¸ID
+   80   1        SPI_CE_High();
+   81   1        if (W25Q128_ID == 0x17)
+   82   1          B_FlashOK = 1;
+   83   1        else
+   84   1          B_FlashOK = 0;
+   85   1        // ¶Ïµã²é¿´¶ÁÈ¡µÄIDÀàÐÍ
+   86   1      }
+   87          
+   88          /************************************************
+   89          ¼ì²âFlashµÄÃ¦×´Ì¬
+   90          Èë¿Ú²ÎÊý: ÎÞ
+   91          ³ö¿Ú²ÎÊý:
+   92              0 : Flash´¦ÓÚ¿ÕÏÐ×´Ì¬
+   93              1 : Flash´¦ÓÚÃ¦×´Ì¬
+   94          ************************************************/
+   95          
+   96          u8 CheckFlashBusy(void)
+   97          {
+   98   1        u8 dat;
+   99   1      
+  100   1        SPI_CE_Low();
+  101   1        SPI_WriteByte(SFC_RDSR); // ·¢ËÍ¶ÁÈ¡×´Ì¬ÃüÁî
+  102   1        dat = SPI_ReadByte();    // ¶ÁÈ¡×´Ì¬
+  103   1        SPI_CE_High();
+  104   1      
+  105   1        return (dat); // ×´Ì¬ÖµµÄBit0¼´ÎªÃ¦±êÖ¾
+  106   1      }
+  107          
+  108          /************************************************
+  109          Ê¹ÄÜFlashÐ´ÃüÁî
+  110          Èë¿Ú²ÎÊý: ÎÞ
+  111          ³ö¿Ú²ÎÊý: ÎÞ
+  112          ************************************************/
+  113          void FlashWriteEnable(void)
+  114          {
+  115   1        while (CheckFlashBusy() > 0)
+  116   1          ; // FlashÃ¦¼ì²â
+  117   1        SPI_CE_Low();
+  118   1        SPI_WriteByte(SFC_WREN); // ·¢ËÍÐ´Ê¹ÄÜÃüÁî
+  119   1        SPI_CE_High();
+  120   1      }
+C251 COMPILER V5.60.0,  spi                                                                15/07/24  15:58:56  PAGE 3   
+
+  121          
+  122          /************************************************
+  123          ²Á³ýÉÈÇø, Ò»¸öÉÈÇø4KB
+  124          Èë¿Ú²ÎÊý: ÎÞ
+  125          ³ö¿Ú²ÎÊý: ÎÞ
+  126          ************************************************/
+  127          void FlashSectorErase(u32 addr)//¸Ä³É32KbµÄÇå³ýÁË
+  128          {
+  129   1        if (B_FlashOK)
+  130   1        {
+  131   2          FlashWriteEnable(); // Ê¹ÄÜFlashÐ´ÃüÁî
+  132   2          SPI_CE_Low();
+  133   2          SPI_WriteByte(SFC_SECTORER2);    // ·¢ËÍÉÈÇø²Á³ýÃüÁî
+  134   2          SPI_WriteByte(((u8 *)&addr)[1]); // ÉèÖÃÆðÊ¼µØÖ·
+  135   2          SPI_WriteByte(((u8 *)&addr)[2]);
+  136   2          SPI_WriteByte(((u8 *)&addr)[3]);
+  137   2          SPI_CE_High();
+  138   2        }
+  139   1      }
+  140          
+  141          /************************************************
+  142          ´ÓFlashÖÐ¶ÁÈ¡Êý¾Ý
+  143          Èë¿Ú²ÎÊý:
+  144              addr   : µØÖ·²ÎÊý
+  145              buffer : »º³å´ÓFlashÖÐ¶ÁÈ¡µÄÊý¾Ý
+  146              size   : Êý¾Ý¿é´óÐ¡
+  147          ³ö¿Ú²ÎÊý:
+  148              ÎÞ
+  149          ************************************************/
+  150          void SPI_Read_Nbytes(u32 addr, u8 *buffer, u16 size)
+  151          {
+  152   1        if (size == 0)
+  153   1          return;
+  154   1        if (!B_FlashOK)
+  155   1          return;
+  156   1        while (CheckFlashBusy() > 0)
+  157   1          ; // FlashÃ¦¼ì²â
+  158   1      
+  159   1        SPI_CE_Low();            // enable device
+  160   1        SPI_WriteByte(SFC_READ); // read command
+  161   1      
+  162   1        SPI_WriteByte(((u8 *)&addr)[1]); // ÉèÖÃÆðÊ¼µØÖ·
+  163   1        SPI_WriteByte(((u8 *)&addr)[2]);
+  164   1        SPI_WriteByte(((u8 *)&addr)[3]);
+  165   1      
+  166   1        do
+  167   1        {
+  168   2          *buffer = SPI_ReadByte(); // receive byte and store at buffer
+  169   2          buffer++;
+  170   2        } while (--size); // read until no_bytes is reached
+  171   1        SPI_CE_High(); // disable device
+  172   1      }
+  173          
+  174          /************************************************************************
+  175          ¶Á³ön¸ö×Ö½Ú,¸úÖ¸¶¨µÄÊý¾Ý½øÐÐ±È½Ï, ´íÎó·µ»Ø1,ÕýÈ··µ»Ø0
+  176          ************************************************************************/
+  177          u8 SPI_Read_Compare(u32 addr, u8 *buffer, u16 size)
+  178          {
+  179   1        u8 j;
+  180   1        if (size == 0)
+  181   1          return 2;
+  182   1        if (!B_FlashOK)
+  183   1          return 2;
+  184   1        while (CheckFlashBusy() > 0)
+  185   1          ; // FlashÃ¦¼ì²â
+  186   1      
+C251 COMPILER V5.60.0,  spi                                                                15/07/24  15:58:56  PAGE 4   
+
+  187   1        j = 0;
+  188   1        SPI_CE_Low();                    // enable device
+  189   1        SPI_WriteByte(SFC_READ);         // read command
+  190   1        SPI_WriteByte(((u8 *)&addr)[1]); // ÉèÖÃÆðÊ¼µØÖ·
+  191   1        SPI_WriteByte(((u8 *)&addr)[2]);
+  192   1        SPI_WriteByte(((u8 *)&addr)[3]);
+  193   1        do
+  194   1        {
+  195   2          if (*buffer != SPI_ReadByte()) // receive byte and store at buffer
+  196   2          {
+  197   3            j = 1;
+  198   3            break;
+  199   3          }
+  200   2          buffer++;
+  201   2        } while (--size); // read until no_bytes is reached
+  202   1        SPI_CE_High(); // disable device
+  203   1        return j;
+  204   1      }
+  205          
+  206          /************************************************
+  207          Ð´Êý¾Ýµ½FlashÖÐ
+  208          Èë¿Ú²ÎÊý:
+  209              addr   : µØÖ·²ÎÊý
+  210              buffer : »º³åÐèÒªÐ´ÈëFlashµÄÊý¾Ý
+  211              size   : Êý¾Ý¿é´óÐ¡
+  212          ³ö¿Ú²ÎÊý: ÎÞ
+  213          ************************************************/
+  214          void SPI_Write_Nbytes(u32 addr, u8 *buffer, u8 size)
+  215          {
+  216   1        if (size == 0)
+  217   1          return;
+  218   1        if (!B_FlashOK)
+  219   1          return;
+  220   1        while (CheckFlashBusy() > 0)
+  221   1          ; // FlashÃ¦¼ì²â
+  222   1      
+  223   1        FlashWriteEnable(); // Ê¹ÄÜFlashÐ´ÃüÁî
+  224   1      
+  225   1        SPI_CE_Low();                    // enable device
+  226   1        SPI_WriteByte(SFC_PAGEPROG);     // ·¢ËÍÒ³±à³ÌÃüÁî
+  227   1        SPI_WriteByte(((u8 *)&addr)[1]); // ÉèÖÃÆðÊ¼µØÖ·
+  228   1        SPI_WriteByte(((u8 *)&addr)[2]);
+  229   1        SPI_WriteByte(((u8 *)&addr)[3]);
+  230   1        do
+  231   1        {
+  232   2          SPI_WriteByte(*buffer++); // Á¬ÐøÒ³ÄÚÐ´
+  233   2          addr++;
+  234   2          if ((addr & 0xff) == 0)
+  235   2            break;
+  236   2        } while (--size);
+  237   1        SPI_CE_High(); // disable device
+  238   1      }
+  239          
+  240          /************************************************
+  241          ²Á³ýÕûÆ¬Flash
+  242          Èë¿Ú²ÎÊý: ÎÞ
+  243          ³ö¿Ú²ÎÊý: ÎÞ
+  244          ************************************************/
+  245          // void FlashChipErase(void)
+  246          // {
+  247          //     if(B_FlashOK)
+  248          //     {
+  249          //         FlashWriteEnable();             //Ê¹ÄÜFlashÐ´ÃüÁî
+  250          //         SPI_CE_Low();
+  251          //         SPI_WriteByte(SFC_CHIPER);      //·¢ËÍÆ¬²Á³ýÃüÁî
+  252          //         SPI_CE_High();
+C251 COMPILER V5.60.0,  spi                                                                15/07/24  15:58:56  PAGE 5   
+
+  253          //     }
+  254          // }
+  255          
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =       583     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =    ------     ------
+  xdata-const size     =    ------     ------
+  edata size           =         4         22
+  bit size             =    ------     ------
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =    ------     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

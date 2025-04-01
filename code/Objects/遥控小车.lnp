@@ -1,0 +1,13 @@
+".\Objects\main.obj",
+".\STC32_FPMU_LARGE_V1.0.LIB",
+".\STC32_MDU32_LARGE_V1.1.LIB",
+".\Objects\uart.obj",
+".\Objects\pid.obj",
+".\Objects\can.obj",
+".\Objects\bno08x.obj",
+".\Objects\spi.obj" 
+TO ".\Objects\遥控小车" 
+PRINT(".\Listings\遥控小车.map") CASE 
+REMOVEUNUSED 
+CLASSES (EDATA (0x0-0x1FFF), 
+HDATA (0x0-0x1FFF)) 

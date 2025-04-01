@@ -1,0 +1,170 @@
+C251 COMPILER V5.60.0,  uart                                                               18/07/24  22:33:46  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE uart
+OBJECT MODULE PLACED IN .\Objects\uart.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE User_Group\uart.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRIN
+                    -T(.\Listings\uart.lst) TABS(2) OBJECT(.\Objects\uart.obj) 
+
+stmt  level    source
+
+    1          #include "./H_Group/uart.h"
+    2          
+    3          // 串口部分定义
+    4          u8 xdata Ctrl[8] = {0};
+    5          volatile u8 xdata  RX_Buffer[20] = {0}; // 接收缓冲
+    6          volatile u8 xdata  TX1_Buffer[30] = {0}; // 发送缓冲
+    7          u16 Tx_Cnt = 0;                              // 发送计数指针
+    8          bit B_TX_Busy = 0;                           // 发送忙标志
+    9          
+   10          
+   11          
+   12          void DMA_Send_Start(void) // 启动一次DMA串口发送
+   13          {
+   14   1          if (Tx_Cnt < 100 && Tx_Cnt > 0)
+   15   1          {
+   16   2              DMA_UR1T_AMT = Tx_Cnt - 1; // 设定发送总长
+   17   2              DMA_UR1T_AMTH = ((Tx_Cnt - 1) >> 8);
+   18   2              Tx_Cnt = 0;                // 清除发送指针
+   19   2              if (DMA_UR1T_STA == 0)
+   20   2                  DMA_UR1T_CR = 0xc0; // 启动一次发送
+   21   2          }
+   22   1          else
+   23   1              Tx_Cnt = 0;
+   24   1      }
+   25          
+   26          void UART1T_DMA_Isr(void) interrupt DMA_UR1T_VECTOR
+   27          {
+   28   1          DMA_UR1T_STA = 0x00; // 清除标志位
+   29   1      }
+   30          
+   31          void Uart1_Isr(void) interrupt 4
+   32          {
+   33   1        if (TI)       //检测串口1发送中断
+   34   1        {
+   35   2          TI = 0;     //清除串口1发送中断请求位
+   36   2              B_TX_Busy = 0;
+   37   2        }
+   38   1        if (RI)       //检测串口1接收中断
+   39   1        {
+   40   2          RI = 0;     //清除串口1接收中断请求位
+   41   2        }
+   42   1      }
+   43          
+   44          void Uart1_Init(void) //115200bps@52MHz
+   45          {
+   46   1        SCON |= 0xc0;   //8位数据,可变波特率
+   47   1        AUXR |= 0x40;   //定时器时钟1T模式
+   48   1        AUXR &= 0xFE;   //串口1选择定时器1为波特率发生器
+   49   1        TMOD &= 0x0F;   //设置定时器模式
+   50   1        TL1 = 0x8F;     //设置定时初始值
+   51   1        TH1 = 0xFF;     //设置定时初始值
+   52   1        ET1 = 0;      //禁止定时器中断
+   53   1        TR1 = 1;      //定时器1开始计时
+   54   1        ES = 1;       //使能串口1中断
+   55   1          USARTCR2 |= 0x04;
+   56   1          // DMA串口操作附加部分
+   57   1          DMA_UR1T_CFG = 0x80; // 启动串口中断
+   58   1          DMA_UR1T_STA = 0x00; // 清除状态标志位
+C251 COMPILER V5.60.0,  uart                                                               18/07/24  22:33:46  PAGE 2   
+
+   59   1          DMA_UR1T_AMT = 0;  // 这里写了没用，后面发送之前会重新给定的
+   60   1          DMA_UR1T_TXAH = (u8)((u16)&TX1_Buffer >> 8);
+   61   1          DMA_UR1T_TXAL = (u8)((u16)&TX1_Buffer);
+   62   1          DMA_UR1T_CR = 0xc0;
+   63   1      }
+   64          
+   65          
+   66          
+   67          void UART_Init(void) // 使用Timer2做波特率
+   68          {
+   69   1          P_SW2 |= 0x80;
+   70   1          // 定时器2，200kbps波特率@52
+   71   1          S2CON = 0x50; // 8位数据,可变波特率
+   72   1          S2CFG = 0x01;
+   73   1          AUXR |= 0x04; // 定时器时钟1T模式
+   74   1          T2L = 0xBF;   // 设置定时初始值
+   75   1          T2H = 0xFF;   // 设置定时初始值
+   76   1          AUXR |= 0x10; // 定时器2开始计时
+   77   1          IE2 |= 0x01;  // 使能串口2中断
+   78   1      
+   79   1          UR2TOCR = 0x60; // 关闭超时功能，超时计数时钟源选择内部时钟，使能超时中断
+   80   1          UR2TOTH = (u8)(26000 >> 8);
+   81   1          UR2TOTL = (u8)(26000);
+   82   1      
+   83   1          // DMA串口操作附加部分
+   84   1          // 接收部分一直打开，接收到数据，并且超时后再进行操作
+   85   1          DMA_UR2R_CFG = 0x8f; // 中断优先级最高
+   86   1          DMA_UR2R_STA = 0x00; // 清除状态标志位
+   87   1          DMA_UR2R_AMT = 16;   // 最多一次16个数据,超时自动中断
+   88   1          DMA_UR2R_RXAH = (u8)((u16)&RX_Buffer >> 8);
+   89   1          DMA_UR2R_RXAL = (u8)((u16)&RX_Buffer);
+   90   1          DMA_UR2R_CR = 0xa1; // 清空FIFO,并且启动
+   91   1          UR2TOSR = 0x00;     // 清空中断标志位
+   92   1      }
+   93          
+   94          u8 test = 0;
+   95          u8 i;
+   96          bit uart_dat_pack_done_flag = 0;
+   97          void Uart2_Isr(void) interrupt 8
+   98          {
+   99   1          if (S2CON & 0x02) // 检测串口2发送中断
+  100   1          {
+  101   2              S2CON &= ~0x02; // 清除串口2发送中断请求位
+  102   2          }
+  103   1          if (S2CON & 0x01) // 检测串口2接收中断
+  104   1          {
+  105   2              UR2TOCR |= 0x80; // 使能超时功能
+  106   2              S2CON &= ~0x01;  // 清除串口2接收中断请求位
+  107   2              UR2TOSR = 0x00;  // 清空中断标志位,复位超时计数器
+  108   2          }
+  109   1          if (UR2TOSR & 0x01)
+  110   1          {
+  111   2              test = DMA_UR2R_DONE;
+  112   2              if (DMA_UR2R_DONE == 8)
+  113   2              {
+  114   3                  uart_dat_pack_done_flag = 1;
+  115   3                  for (i = 0; i < 8; i++)
+  116   3                  {
+  117   4                      Ctrl[i] = RX_Buffer[i];
+  118   4                  }
+  119   3                  uart_dat_pack_done_flag = 0;
+  120   3              }
+  121   2              UR2TOCR &= ~0x80; // 关闭超时中断功能
+  122   2              UR2TOSR = 0x00;   // 清空中断标志位
+  123   2              DMA_UR2R_STA = 0x00;
+  124   2              DMA_UR2R_CR = 0x01;  // 关闭DMA功能，清除内置Fifo
+C251 COMPILER V5.60.0,  uart                                                               18/07/24  22:33:46  PAGE 3   
+
+  125   2              DMA_UR2R_CR |= 0xa0; // 打开DMA功能，触发一次启动
+  126   2          }
+  127   1      }
+  128          
+  129          void UART2R_DMA_Isr(void) interrupt 53
+  130          {
+  131   1          DMA_UR2R_STA = 0x00;
+  132   1      }
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =       571     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =        58     ------
+  xdata-const size     =    ------     ------
+  edata size           =         4     ------
+  bit size             =         2     ------
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =        84     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

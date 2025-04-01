@@ -1,0 +1,1 @@
+"User_Group\pwm_adc.c" XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT(.\Listings\pwm_adc.lst) TABS (2) OBJECT(.\Objects\pwm_adc.obj)

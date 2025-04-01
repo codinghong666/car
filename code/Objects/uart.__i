@@ -1,0 +1,1 @@
+"User_Group\uart.c" XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT(.\Listings\uart.lst) TABS (2) OBJECT(.\Objects\uart.obj)

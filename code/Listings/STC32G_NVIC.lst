@@ -1,0 +1,80 @@
+C251 COMPILER V5.60.0,  STC32G_NVIC                                                        06/05/24  21:01:34  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE STC32G_NVIC
+OBJECT MODULE PLACED IN .\Objects\STC32G_NVIC.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE User_Group\STC32G_NVIC.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEB
+                    -UG PRINT(.\Listings\STC32G_NVIC.lst) TABS(2) OBJECT(.\Objects\STC32G_NVIC.obj) 
+
+stmt  level    source
+
+    1          /*---------------------------------------------------------------------*/
+    2          /* --- STC MCU Limited ------------------------------------------------*/
+    3          /* --- STC 1T Series MCU Demo Programme -------------------------------*/
+    4          /* --- Mobile: (86)13922805190 ----------------------------------------*/
+    5          /* --- Fax: 86-0513-55012956,55012947,55012969 ------------------------*/
+    6          /* --- Tel: 86-0513-55012928,55012929,55012966 ------------------------*/
+    7          /* --- Web: www.STCAI.com ---------------------------------------------*/
+    8          /* --- Web: www.STCMCUDATA.com  ---------------------------------------*/
+    9          /* --- BBS: www.STCAIMCU.com  -----------------------------------------*/
+   10          /* --- QQ:  800003751 -------------------------------------------------*/
+   11          /* 如果要在程序中使用此代码,请在程序中注明使用了STC的资料及程序            */
+   12          /*---------------------------------------------------------------------*/
+   13          
+   14          #include "STC32G_NVIC.h"
+   15          
+   16          //========================================================================
+   17          // 函数: NVIC_CAN_Init
+   18          // 描述: CAN嵌套向量中断控制器初始化.
+   19          // 参数: Channel:  通道, CAN1/CAN2.
+   20          // 参数: State:    中断使能状态, ENABLE/DISABLE.
+   21          // 参数: Priority: 中断优先级, Priority_0,Priority_1,Priority_2,Priority_3.
+   22          // 返回: 执行结果 SUCCESS/FAIL.
+   23          // 版本: V1.0, 2023-03-27
+   24          //========================================================================
+   25          #ifndef CAN1
+   26          #define CAN1  0
+   27          #endif
+   28          #ifndef CAN2
+   29          #define CAN2  1
+   30          #endif
+   31          u8 NVIC_CAN_Init(u8 Channel, u8 State, u8 Priority)
+   32          {
+   33   1        if(Channel > CAN2) return FAIL;
+*** ERROR C67 IN LINE 33 OF User_Group\STC32G_NVIC.c: 'FAIL': undefined identifier
+   34   1        if(Priority > Priority_3) return FAIL;
+*** ERROR C67 IN LINE 34 OF User_Group\STC32G_NVIC.c: 'Priority_3': undefined identifier
+*** ERROR C67 IN LINE 34 OF User_Group\STC32G_NVIC.c: 'FAIL': undefined identifier
+   35   1        switch(Channel)
+   36   1        {
+   37   2          case CAN1:
+   38   2            if(State == ENABLE)
+*** ERROR C67 IN LINE 38 OF User_Group\STC32G_NVIC.c: 'ENABLE': undefined identifier
+   39   2              CANIE = 1;    //bit7 1:Enable Interrupt
+   40   2            else
+   41   2              CANIE = 0;    //bit7 0:Disable Interrupt
+   42   2            CAN1_Priority(Priority);
+   43   2          break;
+   44   2      
+   45   2          case CAN2:
+   46   2            if(State == ENABLE)
+*** ERROR C67 IN LINE 46 OF User_Group\STC32G_NVIC.c: 'ENABLE': undefined identifier
+   47   2              CAN2IE = 1;   //bit7 1:Enable Interrupt
+   48   2            else
+   49   2              CAN2IE = 0;   //bit7 0:Disable Interrupt
+   50   2            CAN2_Priority(Priority);
+   51   2          break;
+   52   2      
+   53   2          default:
+C251 COMPILER V5.60.0,  STC32G_NVIC                                                        06/05/24  21:01:34  PAGE 2   
+
+   54   2            return FAIL;
+*** ERROR C67 IN LINE 54 OF User_Group\STC32G_NVIC.c: 'FAIL': undefined identifier
+   55   2          break;
+   56   2        }
+   57   1        return SUCCESS;
+*** ERROR C67 IN LINE 57 OF User_Group\STC32G_NVIC.c: 'SUCCESS': undefined identifier
+   58   1      }
+   59          
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  7 ERROR(S)

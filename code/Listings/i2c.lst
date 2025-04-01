@@ -1,0 +1,130 @@
+C251 COMPILER V5.60.0,  i2c                                                                21/03/24  20:23:40  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE i2c
+OBJECT MODULE PLACED IN .\Objects\i2c.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE User_Group\i2c.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT
+                    -(.\Listings\i2c.lst) TABS(2) OBJECT(.\Objects\i2c.obj) 
+
+stmt  level    source
+
+    1          #include "./H_Group/i2c.h"
+    2          
+    3          void I2C_Init(void)
+    4          {
+    5   1          P_SW2 = (P_SW2 & ~0x30) | 0x10; // I2C: I2CSCL(P2.5), I2CSDA(P2.4)
+    6   1          I2CCFG = 0xc0 | 60;             // 使能I2C，主机模式，52Mhz下I2C速率1Mbps
+    7   1      }
+    8          
+    9          bit busy = 0;
+   10          
+   11          void I2C_Isr() interrupt 24
+   12          {
+   13   1          if (I2CMSST & 0x40)
+   14   1          {
+   15   2              I2CMSST &= ~0x40;
+   16   2              busy = 0;
+   17   2          }
+   18   1      }
+   19          
+   20          void Start()
+   21          {
+   22   1          busy = 1;
+   23   1          I2CMSCR = 0x81; // 发送START命令
+   24   1          while (busy)
+   25   1              ;
+   26   1      }
+   27          
+   28          void SendData(char dat)
+   29          {
+   30   1          busy = 1;
+   31   1          I2CTXD = dat;   // 写数据到数据缓冲区
+   32   1          I2CMSCR = 0x82; // 发送SEND命令
+   33   1          while (busy)
+   34   1              ;
+   35   1      }
+   36          
+   37          void RecvACK()
+   38          {
+   39   1          busy = 1;
+   40   1          I2CMSCR = 0x83; // 发送读ACK命令
+   41   1          while (busy)
+   42   1              ;
+   43   1      }
+   44          
+   45          char RecvData()
+   46          {
+   47   1          busy = 1;
+   48   1          I2CMSCR = 0x84; // 发送RECV命令
+   49   1          while (busy)
+   50   1              ;
+   51   1          return I2CRXD;
+   52   1      }
+   53          
+   54          void SendACK()
+   55          {
+   56   1          busy = 1;
+   57   1          I2CMSST = 0x00; // 设置ACK信号
+   58   1          I2CMSCR = 0x85; // 发送ACK命令
+C251 COMPILER V5.60.0,  i2c                                                                21/03/24  20:23:40  PAGE 2   
+
+   59   1          while (busy)
+   60   1              ;
+   61   1      }
+   62          
+   63          void SendNAK()
+   64          {
+   65   1          busy = 1;
+   66   1          I2CMSST = 0x01; // 设置NAK信号
+   67   1          I2CMSCR = 0x85; // 发送ACK命令
+   68   1          while (busy)
+   69   1              ;
+   70   1      }
+   71          
+   72          void Stop()
+   73          {
+   74   1          busy = 1;
+   75   1          I2CMSCR = 0x86; // 发送STOP命令
+   76   1          while (busy)
+   77   1              ;
+   78   1      }
+   79          
+   80          u8 test_datin = 0;
+   81          u8 test_datout = 0;
+   82          
+   83          void I2C_Send_Data(u8 addr, u8 reg, u8 dat, u8 ack) // ack=0为不检测，ack!=0为错误数据重发检测
+   84          {
+   85   1          Start();                   // 发送起始命令
+   86   1          SendData((addr << 1) | 0); // 发送设备地址+写命令
+   87   1          RecvACK();
+   88   1          SendData(reg); // 发送存储地址
+   89   1          RecvACK();
+   90   1          SendData(dat);
+   91   1          RecvACK();
+   92   1          Stop(); // 发送停止命令
+   93   1      }
+*** WARNING C47 IN LINE 83 OF User_Group\i2c.c: 'ack': unreferenced parameter
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =       275     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =    ------     ------
+  xdata-const size     =    ------     ------
+  edata size           =         2     ------
+  bit size             =         1     ------
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =        10     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)

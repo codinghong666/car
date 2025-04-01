@@ -1,0 +1,45 @@
+{
+    "configurations": [
+        {
+            "name": "Target 1",
+            "includePath": [
+                "d:\\Wang_Design\\2024智能车竞赛\\程序\\遥控小车 无圆环，良好\\H_Group",
+                "d:\\Wang_Design\\2024智能车竞赛\\程序\\遥控小车 无圆环，良好\\User_Group",
+                "C:\\Keil\\C251\\INC",
+                "C:\\Keil\\C251\\INC\\STC",
+                "d:\\Wang_Design\\2024智能车竞赛\\程序\\遥控小车 无圆环，良好",
+                "d:\\Wang_Design\\2024智能车竞赛\\程序\\遥控小车\\User_Group",
+                "${default}",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "__C251__",
+                "__VSCODE_C251__",
+                "reentrant=",
+                "compact=",
+                "small=",
+                "large=",
+                "data=",
+                "idata=",
+                "pdata=",
+                "bdata=",
+                "edata=",
+                "xdata=",
+                "code=",
+                "bit=char",
+                "sbit=char",
+                "sfr=char",
+                "sfr16=int",
+                "sfr32=int",
+                "interrupt=",
+                "using=",
+                "far=",
+                "_at_=",
+                "_priority_=",
+                "_task_="
+            ],
+            "intelliSenseMode": "${default}"
+        }
+    ],
+    "version": 4
+}

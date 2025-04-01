@@ -1,0 +1,53 @@
+C251 COMPILER V5.60.0,  pwm                                                                21/03/24  20:23:40  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE pwm
+OBJECT MODULE PLACED IN .\Objects\pwm.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE User_Group\pwm.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT
+                    -(.\Listings\pwm.lst) TABS(2) OBJECT(.\Objects\pwm.obj) 
+
+stmt  level    source
+
+    1          #include "./H_Group/pwm.h"
+    2          
+    3          // PWM初始化
+    4          void PWM_Init(void)
+    5          {
+    6   1          EAXFR = 1;      // 使能访问外部XFR
+    7   1          PWMA_PS = 0x01; // 切换为为P2口，PWMA_PS不可以使用异步读写
+    8   1          PWMA_PSCRL = 49;
+    9   1          PWMA_CCER1 = 0x00;
+   10   1          PWMA_CCMR1 = 0x68;
+   11   1          PWMA_CCER1 = 0x01;
+   12   1          PWMA_CCR1H = (u8)(1500 >> 8);
+   13   1          PWMA_CCR1L = (u8)(1500);
+   14   1          PWMA_ARRH = (u8)(20000 >> 8);
+   15   1          PWMA_ARRL = (u8)(20000);
+   16   1          PWMA_BKR = 0x80;
+   17   1          PWMA_CR1 = 0x81;
+   18   1          PWMA_ENO = 0x01;
+   19   1      }
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =       115     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =    ------     ------
+  xdata-const size     =    ------     ------
+  edata size           =    ------     ------
+  bit size             =    ------     ------
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =    ------     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

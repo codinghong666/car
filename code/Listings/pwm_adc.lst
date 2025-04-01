@@ -1,0 +1,129 @@
+C251 COMPILER V5.60.0,  pwm_adc                                                            06/05/24  21:01:34  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE pwm_adc
+OBJECT MODULE PLACED IN .\Objects\pwm_adc.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE User_Group\pwm_adc.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG P
+                    -RINT(.\Listings\pwm_adc.lst) TABS(2) OBJECT(.\Objects\pwm_adc.obj) 
+
+stmt  level    source
+
+    1          #include "pwm_adc.h"
+    2          
+    3          #define PWM1_1 0x00 // P:P1.0  N:P1.1
+    4          #define PWM1_2 0x01 // P:P2.0  N:P2.1
+    5          #define PWM1_3 0x02 // P:P6.0  N:P6.1
+    6          
+    7          #define PWM2_1 0x00 // P:P1.2/P5.4  N:P1.3
+    8          #define PWM2_2 0x04 // P:P2.2  N:P2.3
+    9          #define PWM2_3 0x08 // P:P6.2  N:P6.3
+   10          
+   11          #define PWM3_1 0x00 // P:P1.4  N:P1.5
+   12          #define PWM3_2 0x10 // P:P2.4  N:P2.5
+   13          #define PWM3_3 0x20 // P:P6.4  N:P6.5
+   14          
+   15          #define PWM4_1 0x00 // P:P1.6  N:P1.7
+   16          #define PWM4_2 0x40 // P:P2.6  N:P2.7
+   17          #define PWM4_3 0x80 // P:P6.6  N:P6.7
+   18          #define PWM4_4 0xC0 // P:P3.4  N:P3.3
+   19          
+   20          #define ENO1P 0x01
+   21          #define ENO1N 0x02
+   22          #define ENO2P 0x04
+   23          #define ENO2N 0x08
+   24          #define ENO3P 0x10
+   25          #define ENO3N 0x20
+   26          #define ENO4P 0x40
+   27          #define ENO4N 0x80
+   28          
+   29          u16 set_period = 1300;
+   30          u16 set_ccr = 100;
+   31          
+   32          void PWM_ADC_Init(void)
+   33          {
+   34   1          PWMA_PS = 0x00;    // 高级 PWM 通道输出脚选择位
+   35   1          PWMA_PS |= PWM1_2; // 选择 PWM1_2 通道
+   36   1      
+   37   1          PWMA_ENO = 0x00;
+   38   1          PWMA_ENO |= ENO1P; // 使能输出，小脉冲
+   39   1      
+   40   1          PWMA_CNTRH = 0x00;
+   41   1          PWMA_CNTRL = 0x00;
+   42   1      
+   43   1          PWMA_ARRH = (u8)(set_period >> 8); // 设置周期时间
+   44   1          PWMA_ARRL = (u8)set_period;
+   45   1      
+   46   1          PWMA_CCR1H = (u8)(set_ccr >> 8);
+   47   1          PWMA_CCR1L = (u8)(set_ccr);
+   48   1      
+   49   1          PWMA_CR2 = 0x30; // 设置比较捕获打开ADC
+   50   1      
+   51   1          PWMA_CCER1 = 0x00; // 写 CCMRx 前必须先清零 CCxE 关闭通道
+   52   1          PWMA_CCMR1 = 0x60; // 通道模式配置
+   53   1          PWMA_CCER1 = 0x01; // 配置通道输出使能和极性
+   54   1      
+   55   1          PWMA_BKR = 0x80;  // 使能主输出
+   56   1          PWMA_CR1 |= 0x01; // 使能计数器
+   57   1      
+   58   1          ADC_CONTR = 12; // 固定打开12通道
+C251 COMPILER V5.60.0,  pwm_adc                                                            06/05/24  21:01:34  PAGE 2   
+
+   59   1          ADC_POWER = 1;
+   60   1          ADC_EPWMT = 1;
+   61   1          ADC_FLAG = 0;
+   62   1          ADCCFG = 0x20;         // 调整为右对齐，ADC时钟速度最快
+   63   1          ADCTIM = 0x9f;         // 最大采样时间
+   64   1          EADC = 1;
+   65   1          PWMA_IER = 0x01;
+   66   1      }
+   67          
+   68          void PWMA_Isr(void) interrupt 26
+   69          {
+   70   1          if (PWMA_SR1 & 0x01)
+   71   1          {
+   72   2              PWMA_SR1 &= ~0x01;
+   73   2          }
+   74   1      }
+   75          
+   76          #define CCD_AO P04  // ADC12
+   77          #define CCD_CLK P20 // PWM1P
+   78          #define CCD_SI P02
+   79          
+   80          u16 ADC_Cnt = 0;    // ADC缓冲计数
+   81          bit ADC_Finish = 0; // 成功置1
+   82          void Start_Get_Image(void)
+   83          {
+   84   1          PWMA_CR1 &= ~0x01; // 暂时关闭PWMA
+   85   1          PWMA_CNTRH = 0x00;
+   86   1          PWMA_CNTRL = 0x00; // 计数清零
+   87   1          PWMA_ENO = 0x00;   // 关闭PWMA端口输出
+   88   1          CCD_CLK = 1;
+   89   1          CCD_SI = 0;
+   90   1          CCD_CLK = 0;
+   91   1          CCD_SI = 1;
+   92   1          CCD_CLK = 1;
+   93   1          CCD_SI = 0;
+   94   1          CCD_CLK = 0;
+   95   1          ADC_START = 1;
+   96   1          PWMA_ENO |= ENO1P; // 使能输出，小脉冲
+   97   1          ADC_Cnt = 0;       // 从零开始计数
+   98   1          PWMA_CR1 |= 0x01;  // 启动PWMA定时器计数
+   99   1          ADC_Finish = 0;
+  100   1      }
+  101          
+  102          void ADC_Isr(void) interrupt 5
+  103          {
+  104   1          ADC_FLAG = 0;
+  105   1          adc_tmp[ADC_Cnt] = ((u16)ADC_RES << 8 | ADC_RESL);
+*** ERROR C67 IN LINE 105 OF User_Group\pwm_adc.c: 'adc_tmp': undefined identifier
+  106   1          if (ADC_Cnt >= 128)
+  107   1          {
+  108   2              PWMA_CR1 &= ~0x01; // 暂时关闭PWMA
+  109   2              ADC_Finish = 1;
+  110   2          }else
+  111   1          {
+  112   2              ADC_Cnt++;
+  113   2          }
+  114   1      }
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  1 ERROR(S)

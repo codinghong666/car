@@ -1,0 +1,1 @@
+"User_Group\can.c" XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT(.\Listings\can.lst) TABS (2) OBJECT(.\Objects\can.obj)

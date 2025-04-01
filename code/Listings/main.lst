@@ -1,0 +1,1635 @@
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE main
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE main.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT(.\Listing
+                    -s\main.lst) TABS(2) OBJECT(.\Objects\main.obj) 
+
+stmt  level    source
+
+    1          #include "./H_Group/bno08x.h" //陀螺仪相关
+    2          #include "./H_Group/can.h"    //通讯相关
+    3          #include "./H_Group/config.h" //基本配置
+    4          #include "./H_Group/pid.h"    //算法相关
+    5          #include "./H_Group/spi.h"    //flash相关
+    6          #include "./H_Group/uart.h"   //通讯相关
+    7          
+    8          // 多线程功能
+    9          // 最大线程数
+   10          #define Task_Max 20
+   11          // 线程指针
+   12          u8 Task = 0;
+   13          // 线程状态表
+   14          u8 Task_This[Task_Max] = {0};
+   15          // 线程私有定时器
+   16          u16 Task_Timer[Task_Max] = {0};
+   17          u8 camer_ctrl_dat = 0;
+   18          #define XYABLBRB_Dat 1
+   19          #define TBLRBS_Dat 0
+   20          
+   21          #define Key_X 0x40
+   22          #define Key_Y 0x80
+   23          #define Key_A 0x10
+   24          #define Key_B 0x20
+   25          #define Key_LB 0x01
+   26          #define Key_RB 0x02
+   27          #define Key_Up 0x01
+   28          #define Key_Down 0x02
+   29          #define Key_Left 0x04
+   30          #define Key_Right 0x08
+   31          #define Key_Back 0x20
+   32          #define Key_Start 0x10
+   33          
+   34          // 函数声明
+   35          void Core_Init(void);
+   36          void GPIO_Init(void);
+   37          void Delay(unsigned int Time);
+   38          void Get_Delay(void);
+   39          void Timer0_Init(void);
+   40          void Timer4_Init(void);
+   41          void Auto_Fre_Calibrator(void);
+   42          // 控制函数
+   43          void Set_Moto(int left_speed, int right_speed);
+   44          void Set_DuoJi(int Dat);
+   45          float LowPassFilter(float x, LowPassConfig *p, float Tf);
+   46          
+   47          // 控制所需变量
+   48          int RT, LT;          // 油门
+   49          char Left_Right, Top_Bottom; // 舵机，速度
+   50          float angle = 0;
+   51          // 导航所需变量
+   52          bit save_flag = 0;      // 保存标志位
+   53          bit save_run = 0;     // 保存的重新运行
+   54          #define diff_addr 130816L // 偏移地址,存储差速
+   55          u32 this_addr = 0;
+   56          // 暂时保留
+   57          u8 full[4] = {0xff, 0xff, 0xff, 0xff}; // 缓存指针
+   58          float save_in[200];
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 2   
+
+   59          float save_out[200];      // 存入缓冲
+   60          u8 in_index = 0, out_index = 0; // 缓存指针
+   61          u8 d_in_index = 0, d_out_index = 0;
+   62          u8 _in_index = 0; // 记忆写指针数值
+   63          u8 d__in_index = 0;
+   64          bit write_in_flag = 0;                 // 写入忙标志位
+   65          float save_left_postion = 0, save_right_postion = 0; // 零点定义
+   66          
+   67          // 打滑检测所需变量
+   68          float a_diff = 0, a_imu = 0, a_speed = 0; // 加速度差值，IMU加速度，速度传感器加速度
+   69          long T_diff = 0, T_start = 0;       // 计算周期，周期起始时间戳
+   70          float v_diff = 0, v_imu = 0, v_speed = 0; // 速度差值，IMU速度积分，速度传感器速度
+   71          float v_imu_last = 0, v_speed_last = 0;   // IMU速度历史值，速度传感器速度历史值
+   72          float v_out = 0, v_out_last = 0;      // 速度最终数值,速度最终数值历史值
+   73          long v_T_start = 0, v_T_diff = 0;
+   74          // 差速输出
+   75          int left_out, right_out;
+   76          float diff_left_gain = 0;
+   77          float diff_right_gain = 0;
+   78          float diff_all = 0;        // 给pid使用的
+   79          float get_diff = 0, _get_diff; // 计算获得差速值
+   80          long d_ldiff = 0, d_rdiff = 0; // 计算差值
+   81          // 通讯交互缓存
+   82          int moto_left_speed = 0, moto_right_speed = 0;
+   83          int servo_positon = 0;
+   84          bit Read_Finish = 0;
+   85          u8 n = 0, can_cnt = 0;
+   86          // 设定yaw
+   87          u16 long_index = 0; // 远方前瞻数
+   88          float set_yaw = 0;
+   89          float long_yaw = 0; // 远方前瞻
+   90          float err_yaw = 0;
+   91          bit A_M_Flag = 0; // 自动模式的
+   92          
+   93          bit high_speed_flag = 0;
+   94          bit middle_speed_flag = 0;
+   95          bit low_speed_flag = 0;
+   96          bit load_run_flag = 0;
+   97          bit stop_key_flag = 0;
+   98          
+   99          int Auto_Angle = 0;
+  100          float add_pos = 0;
+  101          u32 save_index = 0;
+  102          u32 stop_index = 0;
+  103          // 控制自动yaw
+  104          PID_Register yaw_pid, gz_pid;
+  105          void PID_Init(void)
+  106          {
+  107   1        yaw_pid.P = 500 * 2.7;
+  108   1        yaw_pid.I = 250 * 2.7;
+  109   1        yaw_pid.D = 62 * 2.7;
+  110   1        yaw_pid.I_limit = 500;
+  111   1        yaw_pid.limit = 999;
+  112   1        yaw_pid.output_ramp = 10000;
+  113   1      
+  114   1        gz_pid.P = 5;
+  115   1        gz_pid.I = 2.5;
+  116   1        gz_pid.D = 0.62;
+  117   1        gz_pid.I_limit = 10;
+  118   1        gz_pid.limit = 100; // 只允许正的，限幅偏移100
+  119   1        gz_pid.output_ramp = 100000;
+  120   1      }
+  121          // 部件使能
+  122          bit left_en = 0, right_en = 0, servo_en = 0;
+  123          
+  124          float all_speed = 0; // 全局宏观速度
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 3   
+
+  125          
+  126          // 图像控制
+  127          int left_error = 0, right_error = 0;
+  128          float ax = 0, ay = 0, az = 0;
+  129          float gx = 0, gy = 0, gz = 0;
+  130          float qi = 0, qj = 0, qk = 0, qr = 0;
+  131          float roll = 0, pitch = 0, yaw = 0;
+  132          float d_roll = 0, d_pitch = 0, d_yaw = 0;
+  133          float yaw_cnt = 0, last_yaw = 0;
+  134          #define M_PI 3.14159265358979323846
+  135          LowPassConfig gz_loss, diff_loss, ay_loss, speed_loss;
+  136          bit dec_speed_flag = 0;
+  137          u8 light_state = 0, _light_state = 0;   // 灯光等效,灯效模式缓存
+  138          u8 light_left_cnt = 0, light_right_cnt = 0; // 闪烁计数器
+  139          
+  140          void quatToEuler(Quaternion *q, float *yaw, float *pitch, float *roll)
+  141          {
+  142   1        // 计算roll (翻滚)，需特别注意分母为0的情况，这里简化处理，实际应用中可能需要更细致的判断
+  143   1        *roll = atan2(2 * (q->w * q->x + q->y * q->z), q->w * q->w - q->x * q->x - q->y * q->y + q->z * q->z);
+  144   1        // 计算yaw (偏航)
+  145   1        *yaw = atan2(2 * (q->w * q->z - q->x * q->y), 1 - 2 * (q->y * q->y + q->z * q->z));
+  146   1        // 计算pitch (俯仰)
+  147   1        *pitch = 0;
+  148   1      }
+  149          
+  150          Quaternion this_q;
+  151          
+  152          float get_add_yaw(void) // 获得历史累计航向角
+  153          {
+  154   1        return ((yaw_cnt * 2 * M_PI) + yaw);
+  155   1      }
+  156          float in_dat = 0;
+  157          void Timer3_Init(void);
+  158          void main(void)
+  159          {
+  160   1        Core_Init(); // 系统初始化
+  161   1        Timer3_Init();
+  162   1        Uart1_Init(); // 调试串口初始化
+  163   1        UART_Init();  // 串口部分初始化
+  164   1        PID_Init();
+  165   1        Can_Init();
+  166   1        PWM_Transform_Timer_Init(); // 打开PWM作为定时器
+  167   1        I2C_Init();
+  168   1        SPI_init();
+  169   1        GPIO_Init(); // 最后初始化GPIO，防止出现异常电平
+  170   1        if (key1 == 0)
+  171   1        {
+  172   2          while (1)
+  173   2            ;
+  174   2        }
+  175   1        softReset();
+  176   1        Delay_ms(1);
+  177   1        // enableRotationVector(2500);
+  178   1        enableGameRotationVector(2500); // 400hz
+  179   1        enableGyro(2500);
+  180   1        // enableLinearAccelerometer(2500);
+  181   1        Auto_Fre_Calibrator();
+  182   1        left_en = 1;
+  183   1        right_en = 1;
+  184   1        servo_en = 1;
+  185   1        EA = 1;
+  186   1        FlashCheckID();
+  187   1        while (1)
+  188   1        {
+  189   2          Task = 0; // 线程0，跑车及其速度决策
+  190   2          switch (Task_This[Task])
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 4   
+
+  191   2          {
+  192   3          case 0:
+  193   3            if (A_M_Flag == 1)
+  194   3            {
+  195   4              if (save_run == 1)
+  196   4              {
+  197   5                if (load_run_flag)
+  198   5                {
+  199   6                  if (low_speed_flag)
+  200   6                  {
+  201   7                    if (fabs(long_yaw - set_yaw) < 0.5)
+  202   7                    {
+  203   8                      if (all_speed < 200)
+  204   8                        all_speed += 0.5;
+  205   8                    }
+  206   7                    else
+  207   7                    {
+  208   8                      if (all_speed > 180)
+  209   8                        all_speed -= 1.1;
+  210   8                      dec_speed_flag = 1;
+  211   8                    }
+  212   7                    if (all_speed < 0)
+  213   7                      all_speed = 0;
+  214   7                  }
+  215   6                  if (middle_speed_flag)
+  216   6                  {
+  217   7                    if (fabs(long_yaw - set_yaw) < 0.5)
+  218   7                    {
+  219   8                      if (all_speed < 500)
+  220   8                        all_speed += 0.5;
+  221   8                    }
+  222   7                    else
+  223   7                    {
+  224   8                      if (all_speed > 400)
+  225   8                        all_speed -= 1.1;
+  226   8                      dec_speed_flag = 1;
+  227   8                    }
+  228   7                    if (all_speed < 0)
+  229   7                      all_speed = 0;
+  230   7                  }
+  231   6                  if (high_speed_flag)
+  232   6                  {
+  233   7                    if (fabs(long_yaw - set_yaw) < 0.5)
+  234   7                    {
+  235   8                      if (all_speed < 900)
+  236   8                        all_speed += 0.8;
+  237   8                    }
+  238   7                    else
+  239   7                    {
+  240   8                      if (all_speed > 750)
+  241   8                        all_speed -= 1.5;
+  242   8                      dec_speed_flag = 1;
+  243   8                    }
+  244   7                    if (all_speed < 0)
+  245   7                      all_speed = 0;
+  246   7                  }
+  247   6                }
+  248   5                else
+  249   5                {
+  250   6                  if (high_speed_flag == 0 && middle_speed_flag == 0 && low_speed_flag == 0)
+  251   6                    all_speed = (int)((float)(LT) * 3 + (float)((float)(RT) * 2.0));
+  252   6                }
+  253   5                left_out = all_speed;
+  254   5                right_out = -all_speed;
+  255   5                angle = ((float)servo_positon / 1637);
+  256   5                diff_right_gain = fabs(((130 / tan(angle)) - (45)) / (sqrt(4225 + pow(130 / tan(angle), 2))));
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 5   
+
+  257   5                diff_left_gain = fabs(((130 / tan(angle)) + (45)) / (sqrt(4225 + pow(130 / tan(angle), 2))));
+  258   5                Set_Moto(left_out * diff_left_gain, right_out * diff_right_gain);
+  259   5                // 差速记忆
+  260   5                // Set_Moto(left_out * diff_all, right_out * (1 - diff_all));
+  261   5              }
+  262   4              else
+  263   4              {
+  264   5                Set_Moto(0, 0);
+  265   5              }
+  266   4              Delay(1);
+  267   4            }
+  268   3            break;
+  269   3          case 2:
+  270   3            Task_This[Task] = 0;
+  271   3            break;
+  272   3          default:
+  273   3            Get_Delay();
+  274   3            break;
+  275   3          }
+  276   2          Task = 1; // 线程1，陀螺仪解算
+  277   2          switch (Task_This[Task])
+  278   2          {
+  279   3          case 0:
+  280   3            if (dataAvailable() == 1)
+  281   3            {
+  282   4              Task_This[Task] = 3;
+  283   4            }
+  284   3            else
+  285   3            {
+  286   4              Delay(2);
+  287   4            }
+  288   3            break;
+  289   3          case 2:
+  290   3            Task_This[Task] = 0;
+  291   3            break;
+  292   3          case 3:
+  293   3            gz = getGyroZ();
+  294   3            // ay = getLinAccelY() * -300.0f;
+  295   3            // T_diff = (Micros() - T_start);
+  296   3            // T_start = Micros();
+  297   3            // v_diff = (all_speed - v_speed_last) / (float)(T_diff * 1e-6);
+  298   3            // v_speed_last = all_speed;
+  299   3            // v_diff = LowPassFilter(v_diff, &speed_loss, 0.15); // 加速度低通滤波
+  300   3            // ay = LowPassFilter(ay, &ay_loss, 0.15);         // 加速度低通滤波
+  301   3            // a_imu += ay / (float)(T_diff);
+  302   3            // v_imu += a_imu;
+  303   3            // gz = LowPassFilter(gz, &gz_loss, 0.08);
+  304   3            this_q.x = getQuatI();
+  305   3            this_q.y = getQuatJ();
+  306   3            this_q.z = getQuatK();
+  307   3            this_q.w = getQuatReal();
+  308   3            quatToEuler(&this_q, &yaw, &pitch, &roll);
+  309   3            if ((yaw - last_yaw) > 3)
+  310   3            {
+  311   4              yaw_cnt--;
+  312   4            }
+  313   3            if ((yaw - last_yaw) < -3)
+  314   3            {
+  315   4              yaw_cnt++;
+  316   4            }
+  317   3            last_yaw = yaw;
+  318   3            if (save_run == 1 && A_M_Flag == 1)
+  319   3            {
+  320   4              long_index = (int)(all_speed / 10.0f) * 4;
+  321   4              SPI_Read_Nbytes(this_addr, (u8 *)&set_yaw, 4);
+  322   4              if ((this_addr + long_index) < stop_index)
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 6   
+
+  323   4              {
+  324   5                SPI_Read_Nbytes(this_addr + long_index, (u8 *)&long_yaw, 4);
+  325   5              }
+  326   4              servo_positon = PID_Ctrl(get_add_yaw() - set_yaw, &yaw_pid);
+  327   4              // diff_all = PID_Ctrl(((((save_table[save_index + 1] - save_table[save_index])) * (float)(all_speed)
+             - * 0.06)) - gz, &gz_pid);
+  328   4            }
+  329   3            if (save_flag == 0)
+  330   3            {
+  331   4              if (A_M_Flag == 1)
+  332   4              {
+  333   5                if (save_run == 0 && save_flag == 0)
+  334   5                  light_state = state_auto_norun;
+  335   5                else
+  336   5                {
+  337   6                  if (dec_speed_flag == 1) // 上速度策略再改掉
+  338   6                  {
+  339   7                    dec_speed_flag = 0;
+  340   7                    light_state = state_stop;
+  341   7                  }
+  342   6                  else
+  343   6                  {
+  344   7                    if (light_state != state_stop)
+  345   7                    {
+  346   8                      if (gz > 1)
+  347   8                        light_state = state_left;
+  348   8                      if (gz < -1)
+  349   8                        light_state = state_right;
+  350   8                    }
+  351   7                  }
+  352   6                }
+  353   5              }
+  354   4              else
+  355   4              {
+  356   5                if (light_state == state_noaction)
+  357   5                {
+  358   6                  if (gz > 1)
+  359   6                    light_state = state_left;
+  360   6                  if (gz < -1)
+  361   6                    light_state = state_right;
+  362   6                  if (all_speed == 0)
+  363   6                    light_state = state_stop;
+  364   6                  if (light_state == state_stop && all_speed != 0)
+  365   6                    light_state = state_noaction;
+  366   6                }
+  367   5              }
+  368   4            }
+  369   3            else
+  370   3            {
+  371   4              light_state = state_double;
+  372   4            }
+  373   3            Task_This[Task] = 0;
+  374   3            break;
+  375   3          default:
+  376   3            Get_Delay();
+  377   3            break;
+  378   3          }
+  379   2          // 线程2,串口调试程序
+  380   2          // Task = 2;
+  381   2          // switch (Task_This[Task])
+  382   2          // {
+  383   2          // case 0:
+  384   2          //  // if (fabs(ay - v_diff) > 300)
+  385   2          //  //  buzz = 0;
+  386   2          //  // else
+  387   2          //  //  buzz = 1;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 7   
+
+  388   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%f,%f\r\n", ay, v_diff);
+  389   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%.2f,%.2f,%ld,%ld,%f\r\n", get_add_yaw(), set_yaw, this_addr, stop
+             -_index, all_speed);
+  390   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%d,%d,%d\r\n", moto_left_speed, moto_right_speed, (int)A_M_Flag);
+  391   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%d,%d,%d,%d,%d\r\n", save_index, stop_index,(int)save_flag,(int)sa
+             -ve_run,(int)A_M_Flag);
+  392   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%d,%d,%d,%d,%d\r\n", (int)(camera_dat_l - left_error), (int)(camer
+             -a_dat_r - right_error), (int)camera_state_l, (int)camera_state_r, (int)road_state);
+  393   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%d,%f,%f,%f,%f,%f\r\n", (int)(xy_angle * 57.29577), xy_lenth, ax, 
+             -ay, sx_i, sy_i);
+  394   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%d,%d,%d,%d,%f,%f\r\n", (int)(camera_dat_l - left_error), (int)(ca
+             -mera_dat_r - right_error),(int)ccd_pd.e1, (int)Auto_Angle,set_yaw,get_add_yaw());
+  395   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%f,%d,%f,%f,%f\r\n", ((float)servo_positon / -300), servo_positon,
+             - gz, speed_diff.e1, speed_diff.output);
+  396   2          //  // Tx_Cnt = sprintf(TX1_Buffer, "%f,%f,%d\r\n", get_add_yaw(), set_yaw, servo_positon);
+  397   2          //  // DMA_Send_Start();
+  398   2          //  //Delay(20);
+  399   2          //  break;
+  400   2          // case 2:
+  401   2          //  Task_This[Task] = 0;
+  402   2          //  break;
+  403   2          // default:
+  404   2          //  Get_Delay();
+  405   2          //  break;
+  406   2          // }
+  407   2          Task = 3;
+  408   2          switch (Task_This[Task])
+  409   2          {
+  410   3          case 0:
+  411   3            if (uart_dat_pack_done_flag == 0)
+  412   3              Task_This[Task]++;
+  413   3            break;
+  414   3          case 1:
+  415   3            Left_Right = Ctrl[5];
+  416   3            Top_Bottom = Ctrl[4];
+  417   3            RT = Ctrl[3];
+  418   3            LT = Ctrl[2];
+  419   3            if (A_M_Flag == 0)
+  420   3            {
+  421   4              if (Left_Right == 0 && Top_Bottom == 0)
+  422   4                angle = 0;
+  423   4              else if (Left_Right == 0 && Top_Bottom != 0)
+  424   4              {
+  425   5                angle = 0;
+  426   5              }
+  427   4              else
+  428   4                angle = atan2((float)Left_Right, fabs((float)Top_Bottom));
+  429   4              if (angle > 1.5)
+  430   4                angle = 1.5;
+  431   4              if (angle < -1.5)
+  432   4                angle = -1.5;
+  433   4              Set_DuoJi((int)((angle * 666.6))); // 0中，+-1000范围
+  434   4              all_speed = (int)(((float)(sqrt(pow(Top_Bottom, 2) + pow(Left_Right, 2))) * 6.0) + (float)((float)(RT
+             -) * 2.0));
+  435   4      
+  436   4              left_out = all_speed;
+  437   4              right_out = -all_speed;
+  438   4              if (Top_Bottom == 0 && Left_Right == 0)
+  439   4              {
+  440   5                Set_Moto(0, 0);
+  441   5              }
+  442   4              else if (Left_Right == 0 && Top_Bottom != 0)
+  443   4              {
+  444   5                if (Top_Bottom >= 0)
+  445   5                  Set_Moto(left_out, right_out);
+  446   5                else
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 8   
+
+  447   5                  Set_Moto(left_out * -1, right_out * -1);
+  448   5              }
+  449   4              else
+  450   4              {
+  451   5                angle = ((float)servo_positon / 1909);
+  452   5                diff_right_gain = fabs(((130 / tan(angle)) - (45)) / (sqrt(4225 + pow(130 / tan(angle), 2))));
+  453   5                diff_left_gain = fabs(((130 / tan(angle)) + (45)) / (sqrt(4225 + pow(130 / tan(angle), 2))));
+  454   5                if (Top_Bottom >= 0)
+  455   5                  Set_Moto(left_out * diff_left_gain, right_out * diff_right_gain);
+  456   5                else
+  457   5                  Set_Moto(left_out * diff_left_gain * -1, right_out * diff_right_gain * -1);
+  458   5              }
+  459   4            }
+  460   3            Delay(1);
+  461   3            break;
+  462   3          case 3:
+  463   3            Task_This[Task] = 0;
+  464   3            break;
+  465   3          default:
+  466   3            Get_Delay();
+  467   3            break;
+  468   3          }
+  469   2          Task = 4; // 同步CAN数据传送
+  470   2          switch (Task_This[Task])
+  471   2          {
+  472   3          case 0:
+  473   3            CAN1_Tx.FF = STANDARD_FRAME; // 标准帧
+  474   3            CAN1_Tx.RTR = 0;       // 0：数据帧，1：远程帧
+  475   3            CAN1_Tx.DLC = 0x08;      // 数据长度
+  476   3            CAN1_Tx.ID = 0x0001;     // CAN ID
+  477   3            if (servo_en)
+  478   3            {
+  479   4              CAN1_Tx.DataBuffer[0] = 0xa0; // 数据内容
+  480   4            }
+  481   3            else
+  482   3            {
+  483   4              CAN1_Tx.DataBuffer[0] = 0x20; // 数据内容
+  484   4            }
+  485   3            CAN1_Tx.DataBuffer[1] = 0x05;
+  486   3            CAN1_Tx.DataBuffer[2] = 0x00;
+  487   3            CAN1_Tx.DataBuffer[3] = 0x00;
+  488   3            CAN1_Tx.DataBuffer[4] = (char)((long)(servo_positon) >> 24);
+  489   3            CAN1_Tx.DataBuffer[5] = (char)((long)(servo_positon) >> 16);
+  490   3            CAN1_Tx.DataBuffer[6] = (char)((long)(servo_positon) >> 8);
+  491   3            CAN1_Tx.DataBuffer[7] = (char)((long)(servo_positon));
+  492   3            CanSendMsg(&CAN1_Tx);
+  493   3            Task_This[Task] = 1;
+  494   3            break;
+  495   3          case 1:
+  496   3            if (B_Can1Send == 0) // 发送完成标志
+  497   3              Task_This[Task] = 2;
+  498   3            break;
+  499   3          case 2:
+  500   3            CAN1_Tx.FF = STANDARD_FRAME; // 标准帧
+  501   3            CAN1_Tx.RTR = 0;       // 0：数据帧，1：远程帧
+  502   3            CAN1_Tx.DLC = 0x08;      // 数据长度
+  503   3            CAN1_Tx.ID = 0x0003;     // CAN ID
+  504   3            if (left_en)
+  505   3            {
+  506   4              CAN1_Tx.DataBuffer[0] = 0xb0; // 数据内容
+  507   4            }
+  508   3            else
+  509   3            {
+  510   4              CAN1_Tx.DataBuffer[0] = 0x30; // 数据内容
+  511   4            }
+  512   3            CAN1_Tx.DataBuffer[1] = 0x01;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 9   
+
+  513   3            CAN1_Tx.DataBuffer[2] = 0x00;
+  514   3            CAN1_Tx.DataBuffer[3] = 0x00;
+  515   3            CAN1_Tx.DataBuffer[4] = (char)((long)(moto_left_speed) >> 24);
+  516   3            CAN1_Tx.DataBuffer[5] = (char)((long)(moto_left_speed) >> 16);
+  517   3            CAN1_Tx.DataBuffer[6] = (char)((long)(moto_left_speed) >> 8);
+  518   3            CAN1_Tx.DataBuffer[7] = (char)((long)(moto_left_speed));
+  519   3            CanSendMsg(&CAN1_Tx);
+  520   3            Task_This[Task] = 3;
+  521   3            break;
+  522   3          case 3:
+  523   3            if (B_Can1Send == 0) // 发送完成标志
+  524   3              Task_This[Task] = 4;
+  525   3            break;
+  526   3          case 4:
+  527   3            // //====初始化数据=====
+  528   3            CAN1_Tx.FF = STANDARD_FRAME; // 标准帧
+  529   3            CAN1_Tx.RTR = 0;       // 0：数据帧，1：远程帧
+  530   3            CAN1_Tx.DLC = 0x08;      // 数据长度
+  531   3            CAN1_Tx.ID = 0x0002;     // CAN ID
+  532   3            if (right_en)
+  533   3            {
+  534   4              CAN1_Tx.DataBuffer[0] = 0xb0; // 数据内容
+  535   4            }
+  536   3            else
+  537   3            {
+  538   4              CAN1_Tx.DataBuffer[0] = 0x30; // 数据内容
+  539   4            }
+  540   3            CAN1_Tx.DataBuffer[1] = 0x01;
+  541   3            CAN1_Tx.DataBuffer[2] = 0x00;
+  542   3            CAN1_Tx.DataBuffer[3] = 0x00;
+  543   3            CAN1_Tx.DataBuffer[4] = (char)((long)(moto_right_speed) >> 24);
+  544   3            CAN1_Tx.DataBuffer[5] = (char)((long)(moto_right_speed) >> 16);
+  545   3            CAN1_Tx.DataBuffer[6] = (char)((long)(moto_right_speed) >> 8);
+  546   3            CAN1_Tx.DataBuffer[7] = (char)((long)(moto_right_speed));
+  547   3            CanSendMsg(&CAN1_Tx);
+  548   3            Task_This[Task] = 5;
+  549   3            break;
+  550   3          case 5:
+  551   3            if (B_Can1Send == 0) // 发送完成标志
+  552   3              Task_This[Task] = 6;
+  553   3            break;
+  554   3          case 6:               // 同步数据
+  555   3            CAN1_Tx.FF = STANDARD_FRAME;  // 标准帧
+  556   3            CAN1_Tx.RTR = 0;        // 0：数据帧，1：远程帧
+  557   3            CAN1_Tx.DLC = 0x08;       // 数据长度
+  558   3            CAN1_Tx.ID = 0x0000;      // CAN ID
+  559   3            CAN1_Tx.DataBuffer[0] = 0x00; // 数据内容
+  560   3            CAN1_Tx.DataBuffer[1] = 0x00;
+  561   3            CAN1_Tx.DataBuffer[2] = 0x00;
+  562   3            CAN1_Tx.DataBuffer[3] = 0x55;
+  563   3            CAN1_Tx.DataBuffer[4] = 0x00;
+  564   3            CAN1_Tx.DataBuffer[5] = 0x00;
+  565   3            CAN1_Tx.DataBuffer[6] = 0x00;
+  566   3            CAN1_Tx.DataBuffer[7] = 0x00;
+  567   3            CanSendMsg(&CAN1_Tx);
+  568   3            Task_This[Task] = 7;
+  569   3            break;
+  570   3          case 7:
+  571   3            if (B_Can1Send == 0) // 发送完成标志
+  572   3              Task_This[Task] = 0;
+  573   3            break;
+  574   3          // case 9:                    // 同步数据
+  575   3          //  CAN1_Tx.FF = STANDARD_FRAME;      // 标准帧
+  576   3          //  CAN1_Tx.RTR = 0;            // 0：数据帧，1：远程帧
+  577   3          //  CAN1_Tx.DLC = 0x01;           // 数据长度
+  578   3          //  CAN1_Tx.ID = 0x000a;          // CAN ID
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 10  
+
+  579   3          //  CAN1_Tx.DataBuffer[0] = camer_ctrl_dat; // 数据内容
+  580   3          //  camer_ctrl_dat = 0;           // 执行一次就清空
+  581   3          //  CanSendMsg(&CAN1_Tx);
+  582   3          //  Task_This[Task]++;
+  583   3          //  break;
+  584   3          // case 10:
+  585   3          //  if (B_Can1Send == 0) // 发送完成标志
+  586   3          //    Delay(1);
+  587   3          //  break;
+  588   3          // case 12:                 // 同步数据
+  589   3          //  CAN1_Tx.FF = STANDARD_FRAME;      // 标准帧
+  590   3          //  CAN1_Tx.RTR = 0;            // 0：数据帧，1：远程帧
+  591   3          //  CAN1_Tx.DLC = 0x01;           // 数据长度
+  592   3          //  CAN1_Tx.ID = 0x000b;          // CAN ID
+  593   3          //  CAN1_Tx.DataBuffer[0] = camer_ctrl_dat; // 数据内容
+  594   3          //  camer_ctrl_dat = 0;           // 执行一次就清空
+  595   3          //  CanSendMsg(&CAN1_Tx);
+  596   3          //  Task_This[Task]++;
+  597   3          //  break;
+  598   3          // case 13:
+  599   3          //  if (B_Can1Send == 0) // 发送完成标志
+  600   3          //    Task_This[Task]++;
+  601   3          //  break;
+  602   3          // case 14:            // 同步数据
+  603   3          //  CAN1_Tx.FF = STANDARD_FRAME; // 标准帧
+  604   3          //  CAN1_Tx.RTR = 1;       // 0：数据帧，1：远程帧
+  605   3          //  CAN1_Tx.DLC = 0x01;      // 数据长度
+  606   3          //  CAN1_Tx.ID = 0x000a;     // CAN ID
+  607   3          //  CanSendMsg(&CAN1_Tx);
+  608   3          //  Task_This[Task]++;
+  609   3          //  break;
+  610   3          // case 15:
+  611   3          //  if (B_Can1Send == 0) // 发送完成标志
+  612   3          //  {
+  613   3          //    Read_Finish = 1;
+  614   3          //    Task_This[Task]++;
+  615   3          //  }
+  616   3          //  break;
+  617   3          // case 16:
+  618   3          //  if (Read_Finish == 0) // 读取完成标志
+  619   3          //    Task_This[Task]++;
+  620   3          //  break;
+  621   3          // case 17:            // 同步数据
+  622   3          //  CAN1_Tx.FF = STANDARD_FRAME; // 标准帧
+  623   3          //  CAN1_Tx.RTR = 1;       // 0：数据帧，1：远程帧
+  624   3          //  CAN1_Tx.DLC = 0x01;      // 数据长度
+  625   3          //  CAN1_Tx.ID = 0x000b;     // CAN ID
+  626   3          //  CanSendMsg(&CAN1_Tx);
+  627   3          //  Task_This[Task]++;
+  628   3          //  break;
+  629   3          // case 18:
+  630   3          //  if (B_Can1Send == 0) // 发送完成标志
+  631   3          //  {
+  632   3          //    Read_Finish = 1;
+  633   3          //    Task_This[Task]++;
+  634   3          //  }
+  635   3          // case 19:
+  636   3          //  if (Read_Finish == 0) // 发送完成标志
+  637   3          //    Task_This[Task] = 0;
+  638   3          //  break;
+  639   3          default:
+  640   3            Get_Delay();
+  641   3            break;
+  642   3          }
+  643   2          Task = 5; // 通讯
+  644   2          switch (Task_This[Task])
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 11  
+
+  645   2          {
+  646   3          case 0:
+  647   3            if (B_Can1Read)
+  648   3            {
+  649   4              B_Can1Read = 0;
+  650   4              CANSEL = CAN1;       // 选择CAN1模块
+  651   4              n = CanReadMsg(CAN1_Rx); // 读取接收内容
+  652   4              for (can_cnt = 0; can_cnt < n; can_cnt++)
+  653   4              {
+  654   5                Can_Dat_Handle(&CAN1_Rx[can_cnt]);
+  655   5              }
+  656   4              // Read_Finish = 0;
+  657   4            }
+  658   3            break;
+  659   3          default:
+  660   3            Get_Delay();
+  661   3            break;
+  662   3          }
+  663   2          // 手动自动模式切换
+  664   2          Task = 6;
+  665   2          switch (Task_This[Task])
+  666   2          {
+  667   3          case 0:
+  668   3            if (((Ctrl[XYABLBRB_Dat] & Key_A) || key1 == 0) && stop_key_flag == 0)
+  669   3            {
+  670   4              Delay(1);
+  671   4            }
+  672   3            break;
+  673   3          case 2:
+  674   3            if (((Ctrl[XYABLBRB_Dat] & Key_A) || key1 == 0) && stop_key_flag == 0)
+  675   3            {
+  676   4              A_M_Flag = ~A_M_Flag;
+  677   4              set_yaw = get_add_yaw();
+  678   4              // if (camera_state_l != 1 || camera_state_r != 1)
+  679   4              //  A_M_Flag = 0;
+  680   4              if (A_M_Flag) // 进入自动模式前，先对pid进行清零，防止积分
+  681   4              {
+  682   5                all_speed = 0;
+  683   5                // left_error = camera_dat_l;
+  684   5                // right_error = camera_dat_r; // 进入自动模式前对误差进行一次均衡
+  685   5              }
+  686   4              else
+  687   4              {
+  688   5                left_en = 1;
+  689   5                right_en = 1;
+  690   5                servo_en = 1; // 恢复所有的标志位
+  691   5                save_run = 0;
+  692   5                save_flag = 0;
+  693   5                load_run_flag = 0;
+  694   5                low_speed_flag = 0;
+  695   5                middle_speed_flag = 0;
+  696   5                high_speed_flag = 0;
+  697   5              }
+  698   4              Task_This[Task]++;
+  699   4            }
+  700   3            else
+  701   3            {
+  702   4              Task_This[Task] = 0;
+  703   4            }
+  704   3            break;
+  705   3          case 3:
+  706   3            if ((Ctrl[XYABLBRB_Dat] & Key_A) == 0 && key1 == 1)
+  707   3            {
+  708   4              Task_This[Task] = 0;
+  709   4            }
+  710   3            break;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 12  
+
+  711   3          default:
+  712   3            Get_Delay();
+  713   3            break;
+  714   3          }
+  715   2          // 按键响应
+  716   2          Task = 7;
+  717   2          switch (Task_This[Task])
+  718   2          {
+  719   3          case 0:
+  720   3            if (((Ctrl[XYABLBRB_Dat] & Key_X) || key3 == 0) && stop_key_flag == 0)
+  721   3            {
+  722   4              Delay(1);
+  723   4            }
+  724   3      
+  725   3          case 2:
+  726   3            if (((Ctrl[XYABLBRB_Dat] & Key_X) || key3 == 0) && stop_key_flag == 0)
+  727   3            {
+  728   4              save_flag = 0;
+  729   4              save_run = 0;
+  730   4              // 退出操作
+  731   4              stop_index = this_addr;
+  732   4              Task_This[Task]++;
+  733   4            }
+  734   3            else
+  735   3            {
+  736   4              Task_This[Task] = 0;
+  737   4            }
+  738   3      
+  739   3          case 3:
+  740   3            if ((Ctrl[XYABLBRB_Dat] & Key_X) == 0 || key3 == 1)
+  741   3            {
+  742   4              Task_This[Task] = 0;
+  743   4            }
+  744   3          default:
+  745   3            Get_Delay();
+  746   3            break;
+  747   3          }
+  748   2          // 开始记忆路径
+  749   2          Task = 8;
+  750   2          switch (Task_This[Task])
+  751   2          {
+  752   3          case 0:
+  753   3            if (((Ctrl[TBLRBS_Dat] & Key_Start) || key2 == 0) && stop_key_flag == 0)
+  754   3            {
+  755   4              Delay(1);
+  756   4            }
+  757   3            break;
+  758   3          case 2:
+  759   3            if (((Ctrl[TBLRBS_Dat] & Key_Start) || key2 == 0) && stop_key_flag == 0)
+  760   3            {
+  761   4              // 运行的程序
+  762   4              if (A_M_Flag == 1)
+  763   4              {
+  764   5                save_flag = 1;
+  765   5                in_index = 1; // 强制写1
+  766   5                add_pos = 0;  // 清空位置积分
+  767   5                save_run = 0;
+  768   5                // 进入操作
+  769   5                // yaw_cnt = 0;
+  770   5                err_yaw = yaw_cnt;
+  771   5                set_yaw = get_add_yaw(); // 清零
+  772   5                FlashSectorErase(0UL);   // 改为32K的清除
+  773   5                servo_en = 0;
+  774   5                this_addr = 0;
+  775   5                left_en = 0;
+  776   5                right_en = 0;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 13  
+
+  777   5              };
+  778   4              Task_This[Task]++;
+  779   4            }
+  780   3            else
+  781   3            {
+  782   4              Task_This[Task] = 0;
+  783   4            }
+  784   3            break;
+  785   3          case 3:
+  786   3            if ((Ctrl[TBLRBS_Dat] & Key_Start) == 0 || key2 == 1)
+  787   3            {
+  788   4              Task_This[Task] = 0;
+  789   4            }
+  790   3            break;
+  791   3          default:
+  792   3            Get_Delay();
+  793   3            break;
+  794   3          }
+  795   2          // 开始复现路径
+  796   2          Task = 9;
+  797   2          switch (Task_This[Task])
+  798   2          {
+  799   3          case 0:
+  800   3            if (((Ctrl[TBLRBS_Dat] & Key_Back) || key4 == 0) && stop_key_flag == 0)
+  801   3            {
+  802   4              Delay(1);
+  803   4            }
+  804   3            break;
+  805   3          case 2:
+  806   3            if (((Ctrl[TBLRBS_Dat] & Key_Back) || key4 == 0) && stop_key_flag == 0)
+  807   3            {
+  808   4              // 运行的程序
+  809   4              if (A_M_Flag == 1)
+  810   4              {
+  811   5                load_run_flag = 0;
+  812   5                // save_left_postion = read_left_postion;
+  813   5                // save_right_postion = read_right_postion;
+  814   5                save_run = 1;
+  815   5                save_flag = 0;
+  816   5                // yaw_cnt = 0;
+  817   5                // this_addr = 13 * 4; // 从头开始,加入车身长度
+  818   5                this_addr = 24; // 从头开始,加入车身长度
+  819   5                yaw_cnt = err_yaw;
+  820   5                SPI_Read_Nbytes(this_addr, (u8 *)&set_yaw, 4); // 清零
+  821   5                servo_en = 1;
+  822   5                left_en = 1;
+  823   5                right_en = 1;
+  824   5              }
+  825   4              Task_This[Task]++;
+  826   4            }
+  827   3            else
+  828   3            {
+  829   4              Task_This[Task] = 0;
+  830   4            }
+  831   3            break;
+  832   3          case 3:
+  833   3            if ((Ctrl[TBLRBS_Dat] & Key_Back) == 0 && key4 == 1)
+  834   3            {
+  835   4              Task_This[Task] = 0;
+  836   4            }
+  837   3            break;
+  838   3          default:
+  839   3            Get_Delay();
+  840   3            break;
+  841   3          }
+  842   2          // 灯光信号反应，允许被打断
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 14  
+
+  843   2          Task = 10;
+  844   2          switch (Task_This[Task])
+  845   2          {
+  846   3          case 0:
+  847   3            switch (light_state)
+  848   3            {
+  849   4            case state_noaction:
+  850   4            {
+  851   5              // 灯光省电
+  852   5              P2M0 |= 0xcf;
+  853   5              P2M1 |= 0xcf;
+  854   5              P3M0 |= 0xc0;
+  855   5              P3M1 |= 0xc0;
+  856   5              R1 = R2 = R3 = R4 = 0;
+  857   5              Y1 = Y2 = 0;
+  858   5              Y5 = Y6 = 0; // 灯光全关
+  859   5            }
+  860   4            break;
+  861   4            case state_left:
+  862   4            {
+  863   5              if (A_M_Flag)
+  864   5              {
+  865   6                // 灯光推挽
+  866   6                P2M0 |= 0xcf;
+  867   6                P2M1 &= ~0xcf;
+  868   6                P3M0 |= 0xc0;
+  869   6                P3M1 &= ~0xc0;
+  870   6              }
+  871   5              else
+  872   5              {
+  873   6                // 灯光省电
+  874   6                P2M0 |= 0xcf;
+  875   6                P2M1 |= 0xcf;
+  876   6                P3M0 |= 0xc0;
+  877   6                P3M1 |= 0xc0;
+  878   6              }
+  879   5              R1 = R2 = R3 = R4 = 0;
+  880   5              Y1 = Y2 = 1;
+  881   5              Y5 = Y6 = 0;
+  882   5              Delay(200);
+  883   5            }
+  884   4            break;
+  885   4            case state_right:
+  886   4            {
+  887   5              if (A_M_Flag)
+  888   5              {
+  889   6                // 灯光推挽
+  890   6                P2M0 |= 0xcf;
+  891   6                P2M1 &= ~0xcf;
+  892   6                P3M0 |= 0xc0;
+  893   6                P3M1 &= ~0xc0;
+  894   6              }
+  895   5              else
+  896   5              {
+  897   6                // 灯光省电
+  898   6                P2M0 |= 0xcf;
+  899   6                P2M1 |= 0xcf;
+  900   6                P3M0 |= 0xc0;
+  901   6                P3M1 |= 0xc0;
+  902   6              }
+  903   5              R1 = R2 = R3 = R4 = 0;
+  904   5              Y1 = Y2 = 0;
+  905   5              Y5 = Y6 = 1;
+  906   5              Delay(200);
+  907   5            }
+  908   4            break;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 15  
+
+  909   4            case state_stop:
+  910   4            {
+  911   5              if (A_M_Flag)
+  912   5              {
+  913   6                // 灯光推挽
+  914   6                P2M0 |= 0xcf;
+  915   6                P2M1 &= ~0xcf;
+  916   6                P3M0 |= 0xc0;
+  917   6                P3M1 &= ~0xc0;
+  918   6              }
+  919   5              else
+  920   5              {
+  921   6                // 灯光省电
+  922   6                P2M0 |= 0xcf;
+  923   6                P2M1 |= 0xcf;
+  924   6                P3M0 |= 0xc0;
+  925   6                P3M1 |= 0xc0;
+  926   6              }
+  927   5              R1 = R2 = R3 = R4 = 1;
+  928   5              Y1 = Y2 = 0;
+  929   5              Y5 = Y6 = 0;
+  930   5              Delay(1000);
+  931   5            }
+  932   4            break;
+  933   4            case state_double:
+  934   4            {
+  935   5              // 灯光省电
+  936   5              P2M0 |= 0xcf;
+  937   5              P2M1 |= 0xcf;
+  938   5              P3M0 |= 0xc0;
+  939   5              P3M1 |= 0xc0;
+  940   5              R1 = R2 = R3 = R4 = 0;
+  941   5              Y1 = Y2 = 1;
+  942   5              Y5 = Y6 = 1;
+  943   5              Delay(200);
+  944   5            }
+  945   4            break;
+  946   4            case state_auto_norun:
+  947   4            {
+  948   5              // 灯光省电
+  949   5              P2M0 |= 0xcf;
+  950   5              P2M1 |= 0xcf;
+  951   5              P3M0 |= 0xc0;
+  952   5              P3M1 |= 0xc0;
+  953   5              R1 = R2 = R3 = R4 = 1;
+  954   5              Y1 = Y2 = 0;
+  955   5              Y5 = Y6 = 0;
+  956   5            }
+  957   4            break;
+  958   4            default:
+  959   4              break;
+  960   4            }
+  961   3            _light_state = light_state; // 初始缓存一次
+  962   3            break;
+  963   3          case 2:
+  964   3            switch (light_state)
+  965   3            {
+  966   4            case state_left:
+  967   4            {
+  968   5              if (A_M_Flag)
+  969   5              {
+  970   6                // 灯光推挽
+  971   6                P2M0 |= 0xcf;
+  972   6                P2M1 &= ~0xcf;
+  973   6                P3M0 |= 0xc0;
+  974   6                P3M1 &= ~0xc0;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 16  
+
+  975   6              }
+  976   5              else
+  977   5              {
+  978   6                // 灯光省电
+  979   6                P2M0 |= 0xcf;
+  980   6                P2M1 |= 0xcf;
+  981   6                P3M0 |= 0xc0;
+  982   6                P3M1 |= 0xc0;
+  983   6              }
+  984   5              R1 = R2 = R3 = R4 = 0;
+  985   5              Y1 = Y2 = 0;
+  986   5              Y5 = Y6 = 0;
+  987   5              Delay(200);
+  988   5            }
+  989   4            break;
+  990   4            case state_right:
+  991   4            {
+  992   5              if (A_M_Flag)
+  993   5              {
+  994   6                // 灯光推挽
+  995   6                P2M0 |= 0xcf;
+  996   6                P2M1 &= ~0xcf;
+  997   6                P3M0 |= 0xc0;
+  998   6                P3M1 &= ~0xc0;
+  999   6              }
+ 1000   5              else
+ 1001   5              {
+ 1002   6                // 灯光省电
+ 1003   6                P2M0 |= 0xcf;
+ 1004   6                P2M1 |= 0xcf;
+ 1005   6                P3M0 |= 0xc0;
+ 1006   6                P3M1 |= 0xc0;
+ 1007   6              }
+ 1008   5              R1 = R2 = R3 = R4 = 0;
+ 1009   5              Y1 = Y2 = 0;
+ 1010   5              Y5 = Y6 = 0;
+ 1011   5              Delay(200);
+ 1012   5            }
+ 1013   4            break;
+ 1014   4            case state_stop:
+ 1015   4            {
+ 1016   5              if (A_M_Flag)
+ 1017   5              {
+ 1018   6                // 灯光推挽
+ 1019   6                P2M0 |= 0xcf;
+ 1020   6                P2M1 &= ~0xcf;
+ 1021   6                P3M0 |= 0xc0;
+ 1022   6                P3M1 &= ~0xc0;
+ 1023   6              }
+ 1024   5              else
+ 1025   5              {
+ 1026   6                // 灯光省电
+ 1027   6                P2M0 |= 0xcf;
+ 1028   6                P2M1 |= 0xcf;
+ 1029   6                P3M0 |= 0xc0;
+ 1030   6                P3M1 |= 0xc0;
+ 1031   6              }
+ 1032   5              R1 = R2 = R3 = R4 = 0;
+ 1033   5              Y1 = Y2 = 0;
+ 1034   5              Y5 = Y6 = 0;
+ 1035   5              light_state = state_noaction; // 自动清空
+ 1036   5              Task_This[Task] = 0;
+ 1037   5            }
+ 1038   4            break;
+ 1039   4            case state_double:
+ 1040   4            {
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 17  
+
+ 1041   5              // 灯光省电
+ 1042   5              P2M0 |= 0xcf;
+ 1043   5              P2M1 |= 0xcf;
+ 1044   5              P3M0 |= 0xc0;
+ 1045   5              P3M1 |= 0xc0;
+ 1046   5              R1 = R2 = R3 = R4 = 0;
+ 1047   5              Y1 = Y2 = 0;
+ 1048   5              Y5 = Y6 = 0;
+ 1049   5              Delay(200);
+ 1050   5            }
+ 1051   4            break;
+ 1052   4            default:
+ 1053   4              break;
+ 1054   4            }
+ 1055   3            break;
+ 1056   3          case 4:
+ 1057   3            switch (light_state)
+ 1058   3            {
+ 1059   4            case state_left:
+ 1060   4            {
+ 1061   5              if (A_M_Flag)
+ 1062   5              {
+ 1063   6                // 灯光推挽
+ 1064   6                P2M0 |= 0xcf;
+ 1065   6                P2M1 &= ~0xcf;
+ 1066   6                P3M0 |= 0xc0;
+ 1067   6                P3M1 &= ~0xc0;
+ 1068   6              }
+ 1069   5              else
+ 1070   5              {
+ 1071   6                // 灯光省电
+ 1072   6                P2M0 |= 0xcf;
+ 1073   6                P2M1 |= 0xcf;
+ 1074   6                P3M0 |= 0xc0;
+ 1075   6                P3M1 |= 0xc0;
+ 1076   6              }
+ 1077   5              light_left_cnt++;
+ 1078   5              if (light_left_cnt >= 2)
+ 1079   5              {
+ 1080   6                light_left_cnt = 0;
+ 1081   6                light_state = state_noaction;
+ 1082   6              }
+ 1083   5              Task_This[Task] = 0;
+ 1084   5            }
+ 1085   4            break;
+ 1086   4            case state_right:
+ 1087   4            {
+ 1088   5              if (A_M_Flag)
+ 1089   5              {
+ 1090   6                // 灯光推挽
+ 1091   6                P2M0 |= 0xcf;
+ 1092   6                P2M1 &= ~0xcf;
+ 1093   6                P3M0 |= 0xc0;
+ 1094   6                P3M1 &= ~0xc0;
+ 1095   6              }
+ 1096   5              else
+ 1097   5              {
+ 1098   6                // 灯光省电
+ 1099   6                P2M0 |= 0xcf;
+ 1100   6                P2M1 |= 0xcf;
+ 1101   6                P3M0 |= 0xc0;
+ 1102   6                P3M1 |= 0xc0;
+ 1103   6              }
+ 1104   5              light_right_cnt++;
+ 1105   5              if (light_right_cnt >= 2)
+ 1106   5              {
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 18  
+
+ 1107   6                light_right_cnt = 0;
+ 1108   6                light_state = state_noaction;
+ 1109   6              }
+ 1110   5              Task_This[Task] = 0;
+ 1111   5            }
+ 1112   4            break;
+ 1113   4            case state_double:
+ 1114   4            {
+ 1115   5              // 灯光省电
+ 1116   5              P2M0 |= 0xcf;
+ 1117   5              P2M1 |= 0xcf;
+ 1118   5              P3M0 |= 0xc0;
+ 1119   5              P3M1 |= 0xc0;
+ 1120   5              Task_This[Task] = 0;
+ 1121   5            }
+ 1122   4            break;
+ 1123   4            default:
+ 1124   4              break;
+ 1125   4            }
+ 1126   3            break;
+ 1127   3          default:
+ 1128   3          {
+ 1129   4            if (_light_state != light_state)
+ 1130   4            {
+ 1131   5              // 模式切换，强行打断
+ 1132   5              light_left_cnt = 0;
+ 1133   5              light_right_cnt = 0; // 清空计数器
+ 1134   5              Task_This[Task] = 0;
+ 1135   5            }
+ 1136   4            else
+ 1137   4            {
+ 1138   5              Get_Delay();
+ 1139   5            }
+ 1140   4          }
+ 1141   3          break;
+ 1142   3          }
+ 1143   2          // 收到标志，进行保存
+ 1144   2          Task = 2; // 借用串口线程
+ 1145   2          switch (Task_This[Task])
+ 1146   2          {
+ 1147   3          case 0:
+ 1148   3            if (write_in_flag == 0 && save_flag == 1 && in_index > 0) // 记忆状态才允许进入
+ 1149   3            {
+ 1150   4              EA = 0;
+ 1151   4              _in_index = in_index;
+ 1152   4              memcpy(save_out, save_in, (4 * _in_index)); // flaot类型占四个字节
+ 1153   4              in_index = 0;               // 清零复位
+ 1154   4              EA = 1;
+ 1155   4              out_index = 0;
+ 1156   4              Task_This[Task]++;
+ 1157   4            }
+ 1158   3            break;
+ 1159   3          case 1:
+ 1160   3            // 开始写入
+ 1161   3            in_dat = save_out[out_index];
+ 1162   3            out_index++;
+ 1163   3            SPI_Write_Nbytes(this_addr, (u8 *)&in_dat, 4);
+ 1164   3            this_addr += 4;
+ 1165   3            if (out_index == _in_index)
+ 1166   3            {
+ 1167   4              Task_This[Task] = 0;
+ 1168   4            }
+ 1169   3            break;
+ 1170   3          default:
+ 1171   3            Get_Delay();
+ 1172   3            break;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 19  
+
+ 1173   3          }
+ 1174   2          // 开始速度决策
+ 1175   2          Task = 15;
+ 1176   2          switch (Task_This[Task])
+ 1177   2          {
+ 1178   3          case 0:
+ 1179   3            if (key5 == 0)
+ 1180   3            {
+ 1181   4              Delay(1);
+ 1182   4            }
+ 1183   3            break;
+ 1184   3          case 2:
+ 1185   3            if (key5 == 0)
+ 1186   3            {
+ 1187   4              // low_speed_flag = 1;
+ 1188   4              // Task_This[Task] = 0;
+ 1189   4              Task_This[Task]++;
+ 1190   4            }
+ 1191   3            else
+ 1192   3            {
+ 1193   4              Task_This[Task] = 0;
+ 1194   4            }
+ 1195   3            break;
+ 1196   3          case 3:
+ 1197   3            load_run_flag = 0;
+ 1198   3            stop_key_flag = 1;
+ 1199   3            // 超时发车，分为低速、中速、高速，按下时刻再按其他的键即可完成组合功能
+ 1200   3            if (key1 == 0)
+ 1201   3            {
+ 1202   4              low_speed_flag = 1;
+ 1203   4              middle_speed_flag = 0;
+ 1204   4              high_speed_flag = 0;
+ 1205   4              Task_This[Task] = 4;
+ 1206   4              while (key1 == 0)
+ 1207   4                ;
+ 1208   4              stop_key_flag = 0;
+ 1209   4            }
+ 1210   3            if (key2 == 0)
+ 1211   3            {
+ 1212   4              low_speed_flag = 0;
+ 1213   4              middle_speed_flag = 1;
+ 1214   4              high_speed_flag = 0;
+ 1215   4              Task_This[Task] = 4;
+ 1216   4              while (key2 == 0)
+ 1217   4                ;
+ 1218   4              stop_key_flag = 0;
+ 1219   4            }
+ 1220   3            if (key3 == 0)
+ 1221   3            {
+ 1222   4              low_speed_flag = 0;
+ 1223   4              middle_speed_flag = 0;
+ 1224   4              high_speed_flag = 1;
+ 1225   4              Task_This[Task] = 4;
+ 1226   4              while (key3 == 0)
+ 1227   4                ;
+ 1228   4              stop_key_flag = 0;
+ 1229   4            }
+ 1230   3            break;
+ 1231   3          case 4:
+ 1232   3            buzz = 0;
+ 1233   3            Delay(100);
+ 1234   3            break;
+ 1235   3          case 6:
+ 1236   3            buzz = 1;
+ 1237   3            Delay(100);
+ 1238   3            break;
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 20  
+
+ 1239   3          case 8:
+ 1240   3            buzz = 0;
+ 1241   3            Delay(100);
+ 1242   3            break;
+ 1243   3          case 10:
+ 1244   3            buzz = 1;
+ 1245   3            Delay(100);
+ 1246   3            break;
+ 1247   3          case 12:
+ 1248   3            buzz = 0;
+ 1249   3            Delay(100);
+ 1250   3            break;
+ 1251   3          case 14:
+ 1252   3            buzz = 1;
+ 1253   3            Delay(100);
+ 1254   3            break;
+ 1255   3          case 16:
+ 1256   3            buzz = 0;
+ 1257   3            Delay(100);
+ 1258   3            break;
+ 1259   3          case 18:
+ 1260   3            buzz = 1;
+ 1261   3            Delay(100);
+ 1262   3            break;
+ 1263   3          case 20:
+ 1264   3            load_run_flag = 1;
+ 1265   3            Task_This[Task] = 0;
+ 1266   3            break;
+ 1267   3          default:
+ 1268   3            Get_Delay();
+ 1269   3            break;
+ 1270   3          }
+ 1271   2        };
+ 1272   1      }
+ 1273          
+ 1274          void Delay_ms(u16 time) //@52MHz
+ 1275          {
+ 1276   1        unsigned long edata i;
+ 1277   1        for (; time > 0; time--)
+ 1278   1        {
+ 1279   2          _nop_();
+ 1280   2          _nop_();
+ 1281   2          _nop_();
+ 1282   2          i = 12998UL;
+ 1283   2          while (i)
+ 1284   2            i--;
+ 1285   2        }
+ 1286   1      }
+ 1287          
+ 1288          void ICacheOn(void) // 打开ICACHE功能
+ 1289          {
+ 1290   1        bit fEA;
+ 1291   1      
+ 1292   1        if (WTST > 0)
+ 1293   1        {
+ 1294   2          fEA = EA;
+ 1295   2          EA = 0; // 关闭中断，防止写触发命令序列中途产生中断
+ 1296   2          _nop_();
+ 1297   2          _nop_();
+ 1298   2          TA = 0xaa;     // 写入触发命令序列1
+ 1299   2                   // 此处不能有其他任何指令
+ 1300   2          TA = 0x55;     // 写入触发命令序列2
+ 1301   2                   // 此处不能有其他任何指令
+ 1302   2          ICHECR = 0x01; // 写保护暂时关闭，可以修改ICHECR中的EN位
+ 1303   2                   // EN为再次进入写保护状态
+ 1304   2          _nop_();
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 21  
+
+ 1305   2          _nop_();
+ 1306   2          EA = fEA;
+ 1307   2        }
+ 1308   1      }
+ 1309          
+ 1310          void ICacheOff(void) // 关闭ICACHE功能
+ 1311          {
+ 1312   1        bit fEA;
+ 1313   1      
+ 1314   1        fEA = EA;
+ 1315   1        EA = 0; // 关闭中断，防止写触发命令序列中途产生中断
+ 1316   1        _nop_();
+ 1317   1        _nop_();
+ 1318   1        TA = 0xaa;     // 写入触发命令序列1
+ 1319   1                 // 此处不能有其他任何指令
+ 1320   1        TA = 0x55;     // 写入触发命令序列2
+ 1321   1                 // 此处不能有其他任何指令
+ 1322   1        ICHECR = 0x00; // 写保护暂时关闭，可以修改ICHECR中的EN位
+ 1323   1                 // EN位再次进入写保护状态
+ 1324   1        _nop_();
+ 1325   1        _nop_();
+ 1326   1        EA = fEA;
+ 1327   1      }
+ 1328          
+ 1329          void Timer4_Init(void) // 迟钝任务调度@1ms，优先级0
+ 1330          {
+ 1331   1        TM4PS = 0x00;  // 设置定时器时钟预分频 ( 注意:并非所有系列都有此寄存器,详情请查看数据手册 )
+ 1332   1        T4T3M |= 0x20; // 定时器时钟1T模式
+ 1333   1        T4L = 0xE0;    // 设置定时初始值
+ 1334   1        T4H = 0x34;    // 设置定时初始值
+ 1335   1        T4T3M |= 0x80; // 定时器4开始计时
+ 1336   1        IE2 |= 0x40;   // 使能定时器4中断
+ 1337   1      }
+ 1338          
+ 1339          float LowPassFilter(float x, LowPassConfig *p, float Tf)
+ 1340          {
+ 1341   1        unsigned long int time_temp = Micros();
+ 1342   1        float dt = (time_temp - p->last_time) * 1e-6f;
+ 1343   1        float alpha, y;
+ 1344   1        if (dt < 0.0f)
+ 1345   1          dt = 1e-3f;
+ 1346   1        else if (dt > 0.3f)
+ 1347   1        {
+ 1348   2          p->last_result = x;
+ 1349   2          p->last_time = time_temp;
+ 1350   2          return x;
+ 1351   2        }
+ 1352   1        alpha = Tf / (Tf + dt);
+ 1353   1        y = alpha * p->last_result + (1.0f - alpha) * x;
+ 1354   1        p->last_result = y;
+ 1355   1        p->last_time = time_temp;
+ 1356   1        return y;
+ 1357   1      }
+ 1358          
+ 1359          void Core_Init(void)
+ 1360          {
+ 1361   1        EAXFR = 1;    // 使能访问外部XFR
+ 1362   1        CKCON = 0x00; // 外部数据总线速度为最快
+ 1363   1      
+ 1364   1        // 设置HPLL时钟链
+ 1365   1        USBCLK |= 0xe0; // 打开PLL，PLL输入时钟52/8=6.5Mhz
+ 1366   1        HPLLCR |= 14; // HPLL输出为260Mhz
+ 1367   1        HPLLCR |= 0x80; // 启动HPLL
+ 1368   1      
+ 1369   1        Timer4_Init();
+ 1370   1        // PWM输出接口电平预确定
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 22  
+
+ 1371   1      
+ 1372   1        ICacheOn(); // 打开高速缓存
+ 1373   1      }
+ 1374          
+ 1375          void Auto_Fre_Calibrator(void)
+ 1376          {
+ 1377   1        // 打开CRE自动追频
+ 1378   1        X32KCR = 0x80; // 打开外部32K振荡器
+ 1379   1        while (!(X32KCR & 1))
+ 1380   1          ;      // 等待稳定标志位
+ 1381   1        IRTRIM = 0x80; // 初始化为频段的中间频率
+ 1382   1        WTST = WAIT;
+ 1383   1        _nop_();
+ 1384   1        _nop_();
+ 1385   1        _nop_();
+ 1386   1        _nop_();
+ 1387   1        CLKDIV = DIV; // 设置系统分频系数
+ 1388   1        IRCBAND &= ~BAND_MASK;
+ 1389   1        IRCBAND |= BAND; // 设置IRC频段范围，用或操作避免影响USB时钟设置
+ 1390   1        // 设置追频参数
+ 1391   1        CRECNTH = CNT >> 8;
+ 1392   1        CRECNTL = CNT;
+ 1393   1        CRERES = XRES; // 设置CRE校准误差
+ 1394   1        CRECR = 0x90 | CREHF;
+ 1395   1        while (CRECR & 0x01 == 0)
+ 1396   1          ;
+ 1397   1      }
+ 1398          
+ 1399          void GPIO_Init(void)
+ 1400          {
+ 1401   1        // IO初始化
+ 1402   1        P0M0 = 0x04;
+ 1403   1        P0M1 = 0xf8;
+ 1404   1        P1M0 = 0x00;
+ 1405   1        P1M1 = 0x3e;
+ 1406   1      
+ 1407   1        P2M0 = 0xff;
+ 1408   1        P2M1 = 0xff;
+ 1409   1        P3M0 = (P3M0 & ~0x08) | 0xf4;
+ 1410   1        P3M1 = (P3M1 & ~0x3c) | 0xc0;
+ 1411   1        P4M0 = 0x00;
+ 1412   1        P4M1 = 0xff;
+ 1413   1        P5M0 = 0x00;
+ 1414   1        P5M1 = 0xff;
+ 1415   1      
+ 1416   1        P0PU = 0x08;
+ 1417   1        P1PU = 0x38;
+ 1418   1        P2PU = 0xff;
+ 1419   1        P3PU = 0xc0;
+ 1420   1        P3SR = 0xc3;
+ 1421   1        P3DR = 0xcb;
+ 1422   1        P5PU = 0x10;
+ 1423   1      }
+ 1424          
+ 1425          void Set_DuoJi(int Dat)
+ 1426          {
+ 1427   1        if (Dat >= 1000)
+ 1428   1          Dat = 1000;
+ 1429   1        if (Dat <= -1000)
+ 1430   1          Dat = -1000;
+ 1431   1        if (A_M_Flag == 0) // 手动模式
+ 1432   1        {
+ 1433   2          servo_positon = Dat;
+ 1434   2        }
+ 1435   1      }
+ 1436          
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 23  
+
+ 1437          void Set_Moto(int left_speed, int right_speed)
+ 1438          {
+ 1439   1        //====初始化数据=====
+ 1440   1        moto_left_speed = left_speed;
+ 1441   1        moto_right_speed = right_speed;
+ 1442   1      }
+ 1443          
+ 1444          // 设置非堵塞定时，刻度1ms
+ 1445          void Delay(unsigned int Time)
+ 1446          {
+ 1447   1        Task_Timer[Task] = Time;
+ 1448   1        Task_This[Task]++;
+ 1449   1      }
+ 1450          
+ 1451          // 获取当前定时器状态
+ 1452          void Get_Delay(void)
+ 1453          {
+ 1454   1        if (Task_Timer[Task] == 0)
+ 1455   1        {
+ 1456   2          Task_This[Task]++;
+ 1457   2        }
+ 1458   1        else
+ 1459   1        {
+ 1460   2          // 空操作
+ 1461   2        }
+ 1462   1      }
+ 1463          
+ 1464          // 增量位置触发
+ 1465          // 差速全部以中间为基准，即左右轮子行驶距离为100：110时候，距离差值为5，为左右差值的一半
+ 1466          long l_ldiff = 0, l_rdiff = 0;        // 历史差速
+ 1467          float this_postion = 0, last_postion = 0; // 记忆当前位置值,历史值
+ 1468          float _get_yaw = 0;
+ 1469          void Timer3_Isr(void) interrupt 19
+ 1470          {
+ 1471   1        this_postion = ((float)(fabs(read_left_postion) + fabs(read_right_postion)) / 2.0);
+ 1472   1        add_pos += (this_postion - last_postion); // 单位cm
+ 1473   1        // this_postion = ((float)(fabs(read_left_postion - save_left_postion) + fabs(read_right_postion - save_
+             -right_postion)) / 2.0);
+ 1474   1        last_postion = this_postion;
+ 1475   1      
+ 1476   1        if (fabs(add_pos) >= 36384.0)
+ 1477   1          add_pos = 0; // 较大值直接清零
+ 1478   1        // if (fabs(speed_add_pos) >= 36384.0)
+ 1479   1        //  speed_add_pos = 0;          // 较大值直接清零
+ 1480   1        // if (fabs(speed_add_pos) >= (16384.0)) // 大约1cm判断一次
+ 1481   1        // {
+ 1482   1        //  v_T_diff = (Micros() - v_T_start);
+ 1483   1        //  v_T_start = Micros();
+ 1484   1        //  v_speed = ((add_pos*1.3038836697) / (float)v_T_diff)*100;//单位cm/s
+ 1485   1        //  speed_add_pos -= 16384.0;
+ 1486   1        // }
+ 1487   1        if (fabs(add_pos) >= (800.0)) // 大约1cm判断一次
+ 1488   1        {
+ 1489   2          // 开始记忆路径
+ 1490   2          if (save_flag == 1)
+ 1491   2          {
+ 1492   3            _get_yaw = get_add_yaw();
+ 1493   3            servo_en = 0;
+ 1494   3            write_in_flag = 1;
+ 1495   3            save_in[in_index] = _get_yaw;
+ 1496   3            if (in_index < 190)
+ 1497   3              in_index++;
+ 1498   3            write_in_flag = 0;
+ 1499   3          }
+ 1500   2          // 开始复现路径
+ 1501   2          if (save_run == 1)
+C251 COMPILER V5.60.0,  main                                                               20/07/24  06:46:51  PAGE 24  
+
+ 1502   2          {
+ 1503   3            servo_en = 1;
+ 1504   3            left_en = 1;
+ 1505   3            right_en = 1;
+ 1506   3            if (stop_index > 100)
+ 1507   3            {
+ 1508   4              if (this_addr > (stop_index - 52))
+ 1509   4              {
+ 1510   5                save_run = 0;
+ 1511   5                save_flag = 0;
+ 1512   5                this_addr = 0;
+ 1513   5                load_run_flag = 0;
+ 1514   5                high_speed_flag = 0;
+ 1515   5                middle_speed_flag = 0;
+ 1516   5                low_speed_flag = 0;
+ 1517   5              }
+ 1518   4            }
+ 1519   3            this_addr += 4;
+ 1520   3          }
+ 1521   2          add_pos -= 800.0; // 自身清零，这个也是误差积累中重要的一环，不可忽视
+ 1522   2        }
+ 1523   1      }
+ 1524          
+ 1525          void Timer3_Init(void) // 1毫秒@52MHz
+ 1526          {
+ 1527   1        T4T3M |= 0x02; // 定时器时钟1T模式
+ 1528   1        T3L = 0xE0;    // 设置定时初始值
+ 1529   1        T3H = 0x34;    // 设置定时初始值
+ 1530   1        T4T3M |= 0x08; // 定时器3开始计时
+ 1531   1        IE2 |= 0x20;   // 使能定时器3中断
+ 1532   1      }
+ 1533          
+ 1534          // 任务处理，低优先级
+ 1535          void Timer4_Isr(void) interrupt 20
+ 1536          {
+ 1537   1        u8 i;
+ 1538   1        // 遍历所有线程定时器
+ 1539   1        for (i = 0; i < Task_Max; i++)
+ 1540   1        {
+ 1541   2          if (Task_Timer[i] > 0)
+ 1542   2          {
+ 1543   3            Task_Timer[i]--;
+ 1544   3          }
+ 1545   2        }
+ 1546   1      }
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =      5945     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =    ------     ------
+  xdata-const size     =    ------     ------
+  edata size           =      2062         20
+  bit size             =        14          2
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =       628     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

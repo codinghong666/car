@@ -1,0 +1,1 @@
+"User_Group\pid.c" XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT(.\Listings\pid.lst) TABS (2) OBJECT(.\Objects\pid.obj)

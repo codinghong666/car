@@ -1,0 +1,233 @@
+C251 COMPILER V5.60.0,  pid                                                                11/07/24  00:41:03  PAGE 1   
+
+
+C251 COMPILER V5.60.0, COMPILATION OF MODULE pid
+OBJECT MODULE PLACED IN .\Objects\pid.obj
+COMPILER INVOKED BY: C:\Keil\C251\BIN\C251.EXE User_Group\pid.c XSMALL BROWSE INCDIR(.\H_Group;.\User_Group) DEBUG PRINT
+                    -(.\Listings\pid.lst) TABS(2) OBJECT(.\Objects\pid.obj) 
+
+stmt  level    source
+
+    1          #include "./H_Group/pid.h"
+    2          
+    3          
+    4          
+    5          // 全局计时
+    6          u32 Tick_ms = 0;
+    7          
+    8          void PWM_Transform_Timer_Init(void)
+    9          {
+   10   1          // PWMB工作在普通模式
+   11   1          PWMB_PSCRH = (u8)(52 >> 8); // 1Mhz输出，1us定时精度
+   12   1          PWMB_PSCRL = (u8)(52);
+   13   1          PWMB_ARRH = (u8)(50000 >> 8); // 50ms中断一次，降低性能开销
+   14   1          PWMB_ARRL = (u8)(50000);
+   15   1          PWMB_CR1 = 0x05; // 启动定时器，仅计数器溢出可中断
+   16   1          PWMB_IER = 0x01; // 仅允许更新中断
+   17   1          PPWMBH = 1;
+   18   1          PPWMB = 1; // 最高优先级
+   19   1      }
+   20          void PWMB_Isr(void) interrupt PWMB_VECTOR
+   21          {
+   22   1          PWMB_SR1 = 0x00; // 清除标志位
+   23   1          Tick_ms += 50;   // 每次溢出都是50ms
+   24   1      }
+   25          
+   26          u16 Read_Timer_Cnt(void)
+   27          {
+   28   1          u8 cnth, cntl;
+   29   1          cnth = PWMB_CNTRH;
+   30   1          cntl = PWMB_CNTRL;
+   31   1          return (u16)cnth << 8 | (u8)cntl;
+   32   1      }
+   33          
+   34          // 1us的定时获取精度
+   35          u32 Micros(void)
+   36          {
+   37   1          return (Read_Timer_Cnt() + (Tick_ms * 1000));
+   38   1      }
+   39          
+   40          void IPID_Ctrl(float ek, IPID *p) // 增量PID计算，带积分分离和死区控制
+   41          {
+   42   1          float d_uk = 0;                 // 输出差值
+   43   1          if (fabs(p->ki * (ek)) > p->ei) // 积分分离
+   44   1              d_uk = (p->kp * (ek - p->ek_1)) + (p->ki * (ek)) + (p->kd * (ek - (2 * p->ek_1) + p->ek_2));
+   45   1          else
+   46   1              d_uk = (p->kp * (ek - p->ek_1)) + (p->kd * (ek - (2 * p->ek_1) + p->ek_2));
+   47   1          p->ek_2 = p->ek_1;
+   48   1          p->ek_1 = ek;
+   49   1          if (fabs(d_uk) > p->eo) // 死区控制
+   50   1              p->output += d_uk;
+   51   1          p->output = _constrain(p->output, -(p->limit), (p->limit));
+   52   1      }
+   53          
+   54          u16 code List_X[] = {0, 2, 3, 10, 20, 50};
+   55          float code List_Y[] = {1.0, 2.0, 5.0, 15.5, 60.5, 70.5};
+   56          
+   57          int Fast_Seek(u16 *dat, u16 num)
+   58          {
+C251 COMPILER V5.60.0,  pid                                                                11/07/24  00:41:03  PAGE 2   
+
+   59   1          int l = 0;
+   60   1          int n = sizeof(dat) / sizeof(dat[0]);
+   61   1          int r = n - 1;
+   62   1          int mid = 0;
+   63   1          while (l < r)
+   64   1          {
+   65   2              mid = l + r >> 1;
+   66   2              if (dat[mid] >= num)
+   67   2              {
+   68   3                  r = mid;
+   69   3              }
+   70   2              else
+   71   2              {
+   72   3                  l = mid + 1;
+   73   3              }
+   74   2          }
+   75   1          return l;
+   76   1      }
+   77          
+   78          // float List_PID_Ctrl(float error)
+   79          // {
+   80          //     int x = Fast_Seek(List_X, 1);
+   81          //     float y = List_Y[x];
+   82          //     float y1,out;
+   83          //     if (List_X[x] == 1)
+   84          //     {
+   85          //         y1 = List_Y[x - 1];
+   86          //         out =
+   87          //     }
+   88          // }
+   89          
+   90          float Fast_PID(float error, FPID *p)
+   91          {
+   92   1          float _p, _p2, _d, _d2; // 缓冲输出
+   93   1          _p = p->kp * error;
+   94   1          _p2 = p->kp2 * (fabs(error) * error);
+   95   1          _d = p->kd * (error - p->ek_1);                             // 微分项目
+   96   1          _d2 = p->kd2 * gy;                                          // 陀螺仪微分项
+   97   1          p->output = _p + _p2 + _d + _d2;                            // 全部累加
+   98   1          p->output = _constrain(p->output, -(p->limit), (p->limit)); // 输出先限幅
+   99   1          p->ek_1 = error;
+  100   1          return p->output;
+  101   1      }
+  102          
+  103          float PID_Ctrl(float error, PID_Register *p)
+  104          {
+  105   1          // 计算两次循环中间的间隔时间
+  106   1          unsigned long int timestamp_now = Micros();
+  107   1          float Ts = (timestamp_now - p->timestamp_prev) * 1e-6f;
+  108   1          float proportional;
+  109   1          float integral;
+  110   1          float derivative;
+  111   1          float output;
+  112   1          float output_rate;
+  113   1          // P环
+  114   1          proportional = p->P * error;
+  115   1          derivative = p->D * (p->error_prev - error);
+  116   1      
+  117   1          // 将P,I,D三环的计算值加起来
+  118   1          output = proportional + derivative;
+  119   1          output = _constrain(output, -(p->limit), p->limit);
+  120   1      
+  121   1          if (p->output_ramp > 0)
+  122   1          {
+  123   2              // 对PID的变化速率进行限制
+  124   2              output_rate = (output - p->output_prev) / Ts;
+C251 COMPILER V5.60.0,  pid                                                                11/07/24  00:41:03  PAGE 3   
+
+  125   2              if (output_rate > p->output_ramp)
+  126   2                  output = p->output_prev + p->output_ramp * Ts;
+  127   2              else if (output_rate < -(p->output_ramp))
+  128   2                  output = p->output_prev - p->output_ramp * Ts;
+  129   2          }
+  130   1          // 保存值（为了下一次循环）
+  131   1          p->integral_prev = integral;
+  132   1          p->output_prev = output;
+  133   1          p->error_prev = error;
+  134   1          p->timestamp_prev = timestamp_now;
+  135   1          return output;
+  136   1      }
+  137          
+  138          void PD_Ctrl(float error, PD_Register *p)
+  139          {
+  140   1          float _out;
+  141   1          p->i_add+= error;
+  142   1          if(fabs(error - p->e1)<p->i_th)p->i_add = 0;
+  143   1          _out = (p->kp * error) + ((error - p->e1) * p->kd)+(p->i_add*p->ki);
+  144   1          p->output = _constrain(_out, -p->limit, p->limit);
+  145   1          p->e1 = error;
+  146   1      }
+  147          
+  148          void ADJ_PID_Register(u8 state, ADJ_Register *r)
+  149          {
+  150   1          if (state == 0)
+  151   1          {
+  152   2              // 向下调整
+  153   2              r->max = r->out;
+  154   2          }
+  155   1          else
+  156   1          {
+  157   2              r->min = r->out;
+  158   2              // 向上调整
+  159   2          }
+  160   1          r->out = (r->max + r->min) / 2;
+  161   1      }
+  162          
+  163          /*
+  164          方案1：跟踪的公式为纯I，I的最大值由平滑后的Z轴角速度提供。
+  165          I的大小由速度作为基准量，根据单位时间内超出调整范围的时间来调节，
+  166          并且引入震荡观测器，对out的当前值和历史值进行差值，并且对这个差值进行积分，
+  167          判断积分值过大即可认定为震荡。
+  168          */
+  169          
+  170          void I_Ctrl(float error, I_Register *p)
+  171          {
+  172   1          float _out = 0;
+  173   1          _out = p->output + (error * p->ki);
+  174   1          p->output = _constrain(_out, -p->limit, p->limit);
+  175   1      }
+  176          
+  177          /*
+  178          方案2：基于一次计算的补偿调整系统，使用PI控制，首先调整一个略微不足的P，
+  179          然后加入一个较小的I。使得能锁定中线但是速度快了拐不动。通过设定系统为理想系统，
+  180          拐角和视觉近似线性系统。从而对位置进行猜测。
+  181          角速度较小且误差较小的时候，认定为直道。此时使用纯P控制。限制输出的变化速率。
+  182          误差较大的时候，进入快速调节模式。此时通过两个状态的状态机来调整。
+  183          第一次使用普通PID进行运算。输出后对系统进行检测。判断第一次的输出量和误差之间的关系。
+  184          然后直接通过误差计算出指定的输出量。使其尽量一次到达
+  185          */
+  186          
+  187          /*
+  188          方案3：使用自动前馈，在直道上根据电机的角度自动测量图像误差。
+  189          测量的包括两种信息。一种是当前电机位置的图像误差，
+  190          一种是在当前位置直接打死回到图像中点（电机中点）所需要的时间。
+C251 COMPILER V5.60.0,  pid                                                                11/07/24  00:41:03  PAGE 4   
+
+  191          运行的时候通过PI+前馈。使用前馈调整一次，并且等待调整所需要的时间后，
+  192          使用PI系统进行微小误差稳定调节。直到下次误差超出PI调节范围（设定阈值）
+  193          */
+
+
+Module Information          Static   Overlayable
+------------------------------------------------
+  code size            =      1495     ------
+  ecode size           =    ------     ------
+  data size            =    ------     ------
+  idata size           =    ------     ------
+  pdata size           =    ------     ------
+  xdata size           =    ------     ------
+  xdata-const size     =    ------     ------
+  edata size           =         4         28
+  bit size             =    ------     ------
+  ebit size            =    ------     ------
+  bitaddressable size  =    ------     ------
+  ebitaddressable size =    ------     ------
+  far data size        =    ------     ------
+  huge data size       =    ------     ------
+  const size           =    ------     ------
+  hconst size          =         8     ------
+End of Module Information.
+
+
+C251 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
