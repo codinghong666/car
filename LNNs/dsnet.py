@@ -327,5 +327,53 @@ def test_dynamics():
     # 验证权重变化
     assert not torch.allclose(y1, y2), "Output should differ due to plastic weights!"
 
+def train():
+    # 训练函数
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    input_size = 4
+    hidden_size = 32
+    output_size = 1
+    batch_size = 64
+    epochs = 20
+    
+    X, y = generate_data()
+    dataset = TensorDataset(X, y)
+    train_size = int(0.8 * len(dataset))
+    train_set, test_set = torch.utils.data.random_split(dataset, [train_size, len(dataset)-train_size])
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size)
+
+    # 初始化模型
+    model = LNN(input_size, hidden_size, output_size, device).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    criterion = nn.MSELoss()
+    
+    for epoch in range(epochs):
+        model.train()
+        train_loss = 0
+        for x_batch, y_batch in train_loader:
+            x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(x_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+            
+            train_loss += loss.item()
+        
+        # 验证
+        model.eval()
+        test_loss = 0
+        with torch.no_grad():
+            for x_batch, y_batch in test_loader:
+                x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+                outputs = model(x_batch)
+                test_loss += criterion(outputs, y_batch).item()
+        
+        print(f'Epoch {epoch+1}/{epochs} | Train Loss: {train_loss/len(train_loader):.4f} | Test Loss: {test_loss/len(test_loader):.4f}')
+    
+    # 训练循环
+
 if __name__ == "__main__":
     test_dynamics()
